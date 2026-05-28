@@ -10,8 +10,8 @@ ADRs are reviewed via the [governance process](../../GOVERNANCE.md#architectural
 | --- | --- | --- | --- |
 | [ADR-001](ADR-001-platform.md) | Platform architecture — API style, components, ABAC, envelope encryption, no telemetry, safety/MOR | Accepted | 2026-05-28 |
 | [ADR-002](ADR-002-release-deployment.md) | Release and deployment — two repos, ghcr+ECR, Flux + Flagger, canary, install pattern, embedded-static | Accepted | 2026-05-28 |
-| [ADR-003](ADR-003-db-migrations.md) | Database migration discipline — forward-only, expand-contract, Migration Job, schema validation in CI | Draft | TBA |
-| [ADR-004](ADR-004-defence-in-depth.md) | Defence in depth — billing-attack circuit breaker, rate limiting, audit log, honeypots | Draft | TBA |
+| [ADR-003](ADR-003-db-migrations.md) | Database migration discipline — forward-only, expand-contract, Migration Job, schema validation in CI | Accepted | 2026-05-28 |
+| [ADR-004](ADR-004-defence-in-depth.md) | Defence in depth — billing-attack circuit breaker, rate limiting, audit log, honeypots | Accepted | 2026-05-28 |
 
 ## Template
 
