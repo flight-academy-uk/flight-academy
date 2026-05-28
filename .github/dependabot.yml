@@ -1,0 +1,124 @@
+# Dependabot v2 configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Conventions:
+#   - All updates run weekly, Monday 09:00 Europe/London (one batch to review).
+#   - Patch + minor updates are GROUPED per ecosystem; majors come as separate
+#     PRs so they get individual review.
+#   - Commit message prefixes use a Conventional-Commits scope per ecosystem,
+#     so the squash-merge history stays readable.
+#   - Reviewers default to the maintainer; CODEOWNERS handles fan-out as the
+#     team grows.
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------------------
+  # Rust workspace (root Cargo.toml)
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ICreateThunder"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    labels:
+      - "kind:chore"
+      - "area:deps"
+      - "lang:rust"
+    groups:
+      cargo-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
+
+  # ---------------------------------------------------------------------------
+  # Web frontend (SvelteKit) — anticipated at apps/web
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "npm"
+    directory: "/apps/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ICreateThunder"
+    commit-message:
+      prefix: "chore(deps-web)"
+      include: "scope"
+    labels:
+      - "kind:chore"
+      - "area:deps"
+      - "area:web"
+    groups:
+      web-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
+
+  # ---------------------------------------------------------------------------
+  # GitHub Actions workflows
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "ICreateThunder"
+    commit-message:
+      prefix: "chore(deps-ci)"
+      include: "scope"
+    labels:
+      - "kind:chore"
+      - "area:deps"
+      - "area:ci"
+    groups:
+      actions-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
+
+  # ---------------------------------------------------------------------------
+  # Container images — anticipated at deploy/docker/
+  # If this directory does not exist yet, Dependabot will simply find no
+  # Dockerfiles and report nothing; harmless until the first Dockerfile lands.
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: "docker"
+    directory: "/deploy/docker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "ICreateThunder"
+    commit-message:
+      prefix: "chore(deps-docker)"
+      include: "scope"
+    labels:
+      - "kind:chore"
+      - "area:deps"
+      - "area:deploy"
+    groups:
+      docker-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"

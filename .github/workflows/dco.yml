@@ -1,0 +1,57 @@
+# Developer Certificate of Origin (DCO) check
+#
+# Every commit in a pull request must carry a `Signed-off-by:` trailer.
+# This asserts the author's right to contribute the change under the
+# project's AGPL-3.0-only licence. See:
+#   - https://developercertificate.org
+#   - CONTRIBUTING.md, section "Developer Certificate of Origin (DCO)"
+#
+# How to fix a failed run:
+#
+#   For the most recent commit only:
+#     git commit --amend -s --no-edit
+#     git push --force-with-lease
+#
+#   For multiple commits on the branch:
+#     git rebase --signoff main
+#     git push --force-with-lease
+#
+# Sign-off (`-s`) is the DCO. Cryptographic signing (`-S`) is separate and
+# is also required on `main`. See CONTRIBUTING.md for SSH/GPG setup.
+
+name: DCO
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+# Cancel superseded runs on the same PR head.
+concurrency:
+  group: dco-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Least-privilege: this workflow only needs to read the PR and its commits.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  dco-check:
+    name: Verify Signed-off-by on every commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR head
+        uses: actions/checkout@v4
+        with:
+          # Fetch enough history to see every commit on the PR.
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify DCO sign-off
+        uses: tim-actions/dco@v1.1.0
+        with:
+          # Match the commit range of the pull request.
+          commits: ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}

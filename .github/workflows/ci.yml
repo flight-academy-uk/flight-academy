@@ -1,0 +1,61 @@
+# Continuous integration — placeholder
+#
+# This workflow is intentionally a no-op until the first feature commits
+# land. Once they do, the placeholder job below will be replaced with the
+# real matrix:
+#
+#   Rust (apps/api, crates/*):
+#     - cargo fmt --all -- --check
+#     - cargo clippy --all-targets --all-features -- -D warnings
+#     - cargo test --workspace --all-features
+#     - cargo deny check        (licences, advisories, bans, sources)
+#     - cargo audit             (RustSec advisory database)
+#
+#   Web (apps/web — SvelteKit + Bun):
+#     - bun install --frozen-lockfile
+#     - bun lint
+#     - bun check               (svelte-check)
+#     - bun test
+#     - bun run build           (smoke test)
+#
+#   Mobile (apps/mobile — Flutter):
+#     - flutter analyze
+#     - flutter test
+#
+#   Cross-cutting:
+#     - actionlint              (workflow lint)
+#     - codespell               (typos)
+#     - SBOM generation per release artefact
+#
+# Pinning policy: third-party actions pinned to a major-version tag for
+# readability while the project is small; promote to commit SHAs once we
+# have an action-update review process in place.
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+# Cancel superseded runs for the same ref. Saves minutes and avoids racing.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege: this placeholder only reads the repo. Real jobs will
+# request additional scopes (e.g. `id-token: write` for OIDC, `packages:
+# write` for ghcr publishes) at the job level, not the workflow level.
+permissions:
+  contents: read
+
+jobs:
+  placeholder:
+    name: CI placeholder
+    runs-on: ubuntu-latest
+    steps:
+      - name: Announce
+        run: |
+          echo "CI placeholder — real jobs land alongside first feature commits."
+          echo "See .github/workflows/ci.yml header comment for the planned matrix."
