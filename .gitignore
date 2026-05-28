@@ -1,0 +1,260 @@
+# Flight Academy — .gitignore
+#
+# Organised by area. Keep additions in the correct section. Comments matter:
+# anyone editing this file should understand why something is (or isn't)
+# tracked. When in doubt, prefer ignoring over committing.
+
+# -----------------------------------------------------------------------------
+# Rust / Cargo
+# -----------------------------------------------------------------------------
+# Build outputs from every workspace member
+target/
+**/target/
+
+# rustfmt backup files
+*.rs.bk
+
+# cargo-deny output, if ever written to disk
+deny.lock
+
+# perf / flamegraph artefacts
+perf.data
+perf.data.old
+flamegraph.svg
+
+# Cargo.lock — COMMITTED at the workspace root.
+# This repo ships binaries (the API server, the migrator, the CLI), not a
+# distributed library, so reproducible builds win. Do not add Cargo.lock here.
+
+# -----------------------------------------------------------------------------
+# Node / Bun / SvelteKit (apps/web and friends)
+# -----------------------------------------------------------------------------
+node_modules/
+**/node_modules/
+
+# SvelteKit generated output
+.svelte-kit/
+**/.svelte-kit/
+
+# Build output
+build/
+dist/
+.output/
+.vercel/
+.netlify/
+
+# Vite / Turbo / SWC caches
+.vite/
+.turbo/
+.swc/
+
+# Package manager scratch
+.pnp.*
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Bun
+.bun/
+
+# TypeScript incremental build info
+*.tsbuildinfo
+
+# -----------------------------------------------------------------------------
+# Flutter / Dart (apps/mobile)
+# -----------------------------------------------------------------------------
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+**/build/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
+
+# Android
+android/.gradle/
+android/captures/
+android/gradlew
+android/gradlew.bat
+android/local.properties
+android/**/GeneratedPluginRegistrant.java
+android/key.properties
+*.jks
+*.keystore
+
+# -----------------------------------------------------------------------------
+# Python (tooling, scripts)
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# -----------------------------------------------------------------------------
+# Environment variables and secrets
+# -----------------------------------------------------------------------------
+# Never commit .env files of any flavour
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Cryptographic material — block by default; whitelist with care
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.gpg
+*.asc
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+*.kbx
+
+# Allow specific repository-tracked keys (public, sample, fixture):
+!docs/security/*.asc
+!**/testdata/**/*.pem
+!**/fixtures/**/*.pem
+
+# Cloud / infra credentials
+.aws/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+kubeconfig
+*.kubeconfig
+
+# -----------------------------------------------------------------------------
+# Editors / IDEs
+# -----------------------------------------------------------------------------
+# VS Code — track shared settings, ignore everything else
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime
+*.sublime-workspace
+*.sublime-project
+
+# -----------------------------------------------------------------------------
+# Operating systems
+# -----------------------------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+.directory
+.Trash-*
+
+# -----------------------------------------------------------------------------
+# Test artefacts, coverage, profiling
+# -----------------------------------------------------------------------------
+coverage/
+.coverage
+.coverage.*
+htmlcov/
+*.gcov
+*.gcno
+*.gcda
+*.profraw
+*.profdata
+tarpaulin-report.html
+lcov.info
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# Misc temp
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# -----------------------------------------------------------------------------
+# Container / build tooling local state
+# -----------------------------------------------------------------------------
+# Local Docker / Podman compose overrides — operators may keep these locally
+docker-compose.override.yaml
+docker-compose.override.yml
+compose.override.yaml
+compose.override.yml
+
+# Skaffold / Tilt
+.skaffold/
+.tiltbuild/
+
+# -----------------------------------------------------------------------------
+# Documentation builds
+# -----------------------------------------------------------------------------
+docs/_build/
+docs/.cache/
+site/
+
+# -----------------------------------------------------------------------------
+# Project-specific
+# -----------------------------------------------------------------------------
+# Local-only data for self-hosting / dev (Postgres volumes, MinIO data, etc.)
+/data/
+/.local/
+
+# Scratch space — useful for ad-hoc exploration without polluting the tree
+/scratch/
+/.scratch/

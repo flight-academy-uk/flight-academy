@@ -1,0 +1,35 @@
+# Flight Academy CODEOWNERS
+#
+# Order matters — the LAST matching pattern wins per file.
+# Patterns use a syntax similar to .gitignore. Leading slash means repo-root only.
+#
+# Updating this file requires existing code owners to approve (the rule applies
+# recursively to itself). See:
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — everything not otherwise matched
+*                                   @ICreateThunder
+
+# Governance, legal, policy — extra explicit (even though * covers them)
+/LICENSE                            @ICreateThunder
+/SECURITY.md                        @ICreateThunder
+/CODE_OF_CONDUCT.md                 @ICreateThunder
+/GOVERNANCE.md                      @ICreateThunder
+/CONTRIBUTING.md                    @ICreateThunder
+/CODEOWNERS                         @ICreateThunder
+/.github/CODEOWNERS                 @ICreateThunder
+
+# CI, automation, security-sensitive workflows
+/.github/                           @ICreateThunder
+
+# Architectural decisions and threat model
+/docs/architecture/                 @ICreateThunder
+/docs/security/                     @ICreateThunder
+
+# Future: as the maintainer team grows, sensitive paths will gain specific reviewers.
+# Indicative shape (commented; uncomment + populate when teams exist):
+#
+# /crates/fa-auth/                  @ICreateThunder @flight-academy-uk/security
+# /crates/fa-store/                 @ICreateThunder @flight-academy-uk/security
+# /crates/fa-db/migrations/         @ICreateThunder @flight-academy-uk/db
+# /deploy/                          @ICreateThunder @flight-academy-uk/infra

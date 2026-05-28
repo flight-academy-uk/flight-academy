@@ -1,0 +1,72 @@
+# EditorConfig — https://editorconfig.org
+#
+# Polyglot repository: Rust workspace + SvelteKit web + Flutter mobile +
+# Kubernetes manifests + shell scripts. Defaults below are deliberately
+# conservative; per-language overrides follow.
+
+root = true
+
+# Defaults for every file
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 100
+
+# Rust — rustfmt default is 4 spaces
+[*.rs]
+indent_size = 4
+max_line_length = 100
+
+# Python — PEP 8
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+# Web — SvelteKit, TypeScript, JavaScript
+[*.{js,jsx,ts,tsx,svelte,mjs,cjs}]
+indent_size = 2
+
+# Styles
+[*.{css,scss,sass,less,postcss}]
+indent_size = 2
+
+# Data and config
+[*.{json,jsonc,json5}]
+indent_size = 2
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[*.toml]
+indent_size = 2
+
+# Markdown — trailing whitespace can be significant (line break)
+[*.md]
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Shell
+[*.{sh,bash,zsh}]
+indent_size = 2
+
+# Dart / Flutter
+[*.dart]
+indent_size = 2
+max_line_length = 100
+
+# Make / Just — tabs are syntactically required
+[{Makefile,makefile,GNUmakefile,*.mk,Justfile,justfile,*.just}]
+indent_style = tab
+
+# Go — if any tooling ships in Go
+[*.go]
+indent_style = tab
+
+# Lockfiles — leave untouched
+[{Cargo.lock,package-lock.json,bun.lockb,yarn.lock,pnpm-lock.yaml,pubspec.lock}]
+trim_trailing_whitespace = false
+insert_final_newline = false
