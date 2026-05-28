@@ -1,0 +1,48 @@
+name: Documentation issue
+description: Something in the documentation is wrong, unclear, or missing.
+title: "docs: <short summary>"
+labels: ["kind:docs", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve the documentation.
+
+        For typos and small wording fixes, a pull request is usually faster than an issue — see [CONTRIBUTING.md](https://github.com/flight-academy-uk/flight-academy/blob/main/CONTRIBUTING.md).
+
+  - type: input
+    id: page
+    attributes:
+      label: Page or document affected
+      description: URL, file path, or section heading.
+      placeholder: "docs/development/setup.md — 'Prerequisites' section"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's wrong or missing
+      description: Describe the issue. Quote the problematic text if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: Suggested improvement
+      description: |
+        Optional. If you have proposed wording or know what the documentation should say, share it here.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: dco
+    attributes:
+      label: Developer Certificate of Origin
+      description: |
+        Documentation contributions are subject to the same DCO and licence rules as code.
+        See [CONTRIBUTING.md](https://github.com/flight-academy-uk/flight-academy/blob/main/CONTRIBUTING.md#developer-certificate-of-origin-dco).
+      options:
+        - label: I understand that any documentation I contribute must be signed off under the DCO and licensed under AGPL-3.0-only.
+          required: true

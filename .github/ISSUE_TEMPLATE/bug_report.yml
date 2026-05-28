@@ -1,0 +1,118 @@
+name: Bug report
+description: Something is broken or behaving incorrectly.
+title: "bug: <short summary>"
+labels: ["kind:bug", "status:triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug.
+
+        Before you continue:
+
+        - **Security vulnerabilities** must not be filed as public issues. Use [GitHub Private Security Advisories](https://github.com/flight-academy-uk/flight-academy/security/advisories/new) instead. See [SECURITY.md](https://github.com/flight-academy-uk/flight-academy/blob/main/SECURITY.md).
+        - **Questions** belong in [GitHub Discussions](https://github.com/flight-academy-uk/flight-academy/discussions), not Issues.
+        - **Redact** any secrets, tokens, personal data, or tenant identifiers from logs and screenshots before posting.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag (e.g. `v0.3.1`) or commit SHA if running from source.
+      placeholder: "v0.3.1 or 1a2b3c4"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      description: Where is the issue occurring?
+      options:
+        - Hosted instance (flight-academy.app)
+        - Self-host — docker-compose
+        - Self-host — Kubernetes
+        - Development (local, from source)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of the platform is affected?
+      options:
+        - auth
+        - api
+        - web
+        - mobile
+        - db
+        - integrations
+        - safety
+        - ground-school
+        - accounting
+        - deployment
+        - docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Be specific. A reproducer someone else can follow is the most valuable thing in a bug report.
+      placeholder: |
+        1. Log in as an instructor
+        2. Open the bookings page for tomorrow
+        3. Click "Dispatch"
+        4. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include error messages verbatim.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant log output, stack traces, or HTTP responses.
+
+        **Redact secrets, tokens, tenant identifiers, and personal data before posting.**
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help — screenshots, browser/OS, network conditions, related issues, recent changes.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: dco
+    attributes:
+      label: Developer Certificate of Origin
+      description: |
+        Filing an issue does not require a DCO sign-off, but any patch you propose later will.
+        See [CONTRIBUTING.md](https://github.com/flight-academy-uk/flight-academy/blob/main/CONTRIBUTING.md#developer-certificate-of-origin-dco) for details.
+      options:
+        - label: I understand that any code I contribute to resolve this issue must be signed off under the DCO and licensed under AGPL-3.0-only.
+          required: true
