@@ -27,9 +27,9 @@
 #     - codespell               (typos)
 #     - SBOM generation per release artefact
 #
-# Pinning policy: third-party actions pinned to a major-version tag for
-# readability while the project is small; promote to commit SHAs once we
-# have an action-update review process in place.
+# Pinning policy: all GitHub Actions are pinned to a full commit SHA with a
+# trailing version comment (e.g. `@<sha> # v1.2.3`); Dependabot keeps both the
+# SHA and the comment current.
 
 name: CI
 
