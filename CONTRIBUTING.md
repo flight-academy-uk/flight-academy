@@ -4,7 +4,7 @@ Thanks for your interest. This document describes how contributions land in the 
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md). By participating you agree to uphold it. Report unacceptable behaviour via the channels in [SECURITY.md](SECURITY.md).
+This project has a [Code of Conduct](CODE_OF_CONDUCT.md). By participating you agree to uphold it. Report unacceptable behaviour to `conduct@flight-academy.app`, or via [GitHub Private Security Advisories](https://github.com/flight-academy-uk/flight-academy/security/advisories/new) if you prefer a private channel.
 
 ## Developer Certificate of Origin (DCO)
 
