@@ -22,6 +22,8 @@ Signed-off-by: Your Name <your.email@example.com>
 
 The full DCO text is at <https://developercertificate.org>. By signing off you affirm that statement for the contribution. Pull requests with any unsigned commit will be rejected by the DCO check.
 
+**Bot exemption:** automated dependency-update bots (Dependabot) are not required to sign off — they cannot add the trailer, and a dependency bump is a mechanical metadata change rather than a copyrightable contribution. Their commits are still GPG-signed by GitHub, so the cryptographic signing requirement below still applies to them.
+
 **One-time git setup:**
 
 ```bash

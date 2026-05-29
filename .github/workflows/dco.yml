@@ -41,6 +41,11 @@ permissions:
 jobs:
   dco-check:
     name: Verify Signed-off-by on every commit
+    # Dependabot cannot add a Signed-off-by trailer, and its dependency bumps
+    # are mechanical metadata changes, not copyrightable contributions — so it
+    # is exempt from DCO. Its commits are still GPG-signed by GitHub, so the
+    # required_signatures rule on main still applies.
+    if: github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out PR head
