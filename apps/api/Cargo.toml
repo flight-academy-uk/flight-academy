@@ -1,0 +1,19 @@
+[package]
+name = "flight-academy-api"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+# Lib + bin in one crate per ADR-005 §D; binary name follows ADR-002 §C/§E.
+[lib]
+
+[[bin]]
+name = "flight-academy"
+path = "src/main.rs"
+
+# embedded-static gates rust-embed + a static-asset handler for self-host
+# (ADR-002 §H, ADR-005 §D). Body empty until apps/web/build/ exists.
+[features]
+embedded-static = []
