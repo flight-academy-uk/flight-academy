@@ -17,3 +17,14 @@ path = "src/main.rs"
 # (ADR-002 §H, ADR-005 §D). Body empty until apps/web/build/ exists.
 [features]
 embedded-static = []
+
+[dependencies]
+axum = "0.8.9"
+clap = { version = "4.6.1", features = ["derive"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+utoipa = { version = "5.5.0", features = ["axum_extras"] }
+utoipa-axum = "0.2.0"
