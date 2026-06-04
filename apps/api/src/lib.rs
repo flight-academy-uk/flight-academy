@@ -31,12 +31,10 @@ async fn healthz() -> Json<HealthResponse> {
 }
 
 #[derive(OpenApi)]
-#[openapi(
-    info(
-        title = "Flight Academy API",
-        description = "Multi-tenant aviation platform — UK CAA / EASA ATO, Part 145, airfield operator surfaces.",
-    ),
-)]
+#[openapi(info(
+    title = "Flight Academy API",
+    description = "Multi-tenant aviation platform — UK CAA / EASA ATO, Part 145, airfield operator surfaces.",
+))]
 struct ApiDoc;
 
 fn build() -> (axum::Router, utoipa::openapi::OpenApi) {

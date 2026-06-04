@@ -1,0 +1,10 @@
+# typos configuration — see https://github.com/crate-ci/typos
+#
+# Allow-list domain-specific terms that typos flags as misspellings.
+# Each entry preserves the form on the right; "left = right" means
+# "if you see `left`, do not correct it — `right` is the intended form".
+
+[default.extend-words]
+# Aviation acronyms (real abbreviations, not typos of common words):
+# MOR — Mandatory Occurrence Report (EU 376/2014, CAP 382).
+mor = "mor"
