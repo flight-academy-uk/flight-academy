@@ -25,6 +25,7 @@ ADRs are reviewed via the [governance process](../../GOVERNANCE.md#architectural
 | [ADR-015](ADR-015-csp-static-build.md) | CSP and static-build reconciliation — hash-based CSP for static surface; per-request nonce for sensitive routes; per-request nonce + `'strict-dynamic'` for staff plane; inline-style attributes denied | Accepted | 2026-06-02 |
 | [ADR-016](ADR-016-compliance-baseline.md) | Compliance baseline and certification commitments — applicable-by-law (UK CAA, EASA, ICAO, UK/EU GDPR); design-aligned (Cyber Essentials Plus, ISO 27001 + 27018, SOC 2, WCAG 2.2 AA); operating standards; explicit out-of-scope (DO-178C, FedRAMP, HIPAA, NIS2); self-host accountability split | Accepted | 2026-06-02 |
 | [ADR-017](ADR-017-outbound-http-ssrf.md) | Outbound HTTP and SSRF posture — single `OutboundHttpClient` chokepoint with scheme/IP/redirect/timeout policy; DNS-rebinding closed by connect-time re-resolution; NetworkPolicy denies pod egress to private + metadata ranges; AWS IMDSv2 enforced; refines [ADR-004](ADR-004-defence-in-depth.md), extends [ADR-001 §E](ADR-001-platform.md) | Accepted | 2026-06-03 |
+| [ADR-018](ADR-018-openapi-emission-format.md) | OpenAPI emission format — JSON at `docs/api/openapi.json` via `to_pretty_json()`; drops `unsafe-libyaml-norway` transitive; refines [ADR-005 §E](ADR-005-workspace-layout.md) and [ADR-006 §A](ADR-006-api-contract.md) (path-only); preserves swap-back path if a safe YAML emitter materialises | Accepted | 2026-06-04 |
 
 ## Template
 
