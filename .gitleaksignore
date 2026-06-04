@@ -1,0 +1,14 @@
+# Gitleaks fingerprints to suppress. Each line is `<file>:<rule-id>:<line>`
+# (or longer fingerprint form). Used by gitleaks-the-tool, not gitignore.
+#
+# Adding here means: "this is a known finding, reviewed, intentional".
+# Personal-rule fingerprints (prefix `personal-`) come from the maintainer's
+# global gitleaks config and only fire on machines that have it loaded.
+
+# CONTRIBUTING.md L43 — example `~/.ssh/your_signing_key.pub` in the SSH
+# commit-signing setup instructions. Standard convention.
+CONTRIBUTING.md:personal-tilde-dotfile-path:43
+
+# deny.toml L27 — cargo-deny's `db-path = "~/.cargo/advisory-db"`. The
+# cargo-deny convention for locating the local RustSec advisory DB.
+deny.toml:personal-tilde-dotfile-path:27
