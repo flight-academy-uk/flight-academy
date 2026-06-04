@@ -41,6 +41,46 @@
             "type": "string"
           }
         }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 problem+json envelope. Serde renames `type_uri` to `type` since\n`type` is a reserved Rust keyword.",
+        "required": [
+          "type",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "request_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        }
       }
     }
   }
