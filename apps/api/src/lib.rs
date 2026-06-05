@@ -46,7 +46,14 @@ async fn healthz() -> Json<HealthResponse> {
 )]
 struct ApiDoc;
 
-fn build() -> (axum::Router, utoipa::openapi::OpenApi) {
+/// The assembled router and its OpenAPI document. Returned as a named pair
+/// so callers can pick the half they need without touching tuple indices.
+struct Built {
+    router: axum::Router,
+    openapi: utoipa::openapi::OpenApi,
+}
+
+fn build() -> Built {
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
     // OUTSIDE the previous one): `Propagate` is applied first so it ends up
     // INNER; `Set` is applied second so it ends up OUTER. On request, Set
@@ -54,24 +61,25 @@ fn build() -> (axum::Router, utoipa::openapi::OpenApi) {
     // Propagate; on response, Propagate runs first (copy id from extensions
     // onto the response header), then Set. That order is what makes the
     // outbound `x-request-id` header reliable per ADR-004 §B.
-    OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let (router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(healthz))
         .layer(PropagateRequestIdLayer::new(middleware::X_REQUEST_ID))
         .layer(SetRequestIdLayer::new(
             middleware::X_REQUEST_ID,
             middleware::MakeRequestUuidV7,
         ))
-        .split_for_parts()
+        .split_for_parts();
+    Built { router, openapi }
 }
 
 /// Construct the axum router used by the `serve` subcommand and integration tests.
 pub fn app() -> axum::Router {
-    build().0
+    build().router
 }
 
 /// Produce the assembled OpenAPI document used by the `emit-spec` subcommand
 /// (and any tooling that wants to compare the live contract against the
 /// committed `docs/api/openapi.json` — ADR-006 §A; format per ADR-018).
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    build().1
+    build().openapi
 }
