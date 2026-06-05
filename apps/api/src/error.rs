@@ -53,17 +53,19 @@ pub struct ProblemDetails {
 /// HTTP-layer wrapper around `flight_academy_core::Error` that implements
 /// `IntoResponse`. Handlers return `Result<T, ApiError>`; `?` on a
 /// `flight_academy_core::Result` converts automatically via `From<Error>`.
-pub struct ApiError(pub Error);
+pub struct ApiError {
+    pub err: Error,
+}
 
 impl From<Error> for ApiError {
     fn from(err: Error) -> Self {
-        Self(err)
+        Self { err }
     }
 }
 
 impl ApiError {
     fn classify(&self) -> (StatusCode, &'static str, &'static str, Option<String>) {
-        match &self.0 {
+        match &self.err {
             Error::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal",

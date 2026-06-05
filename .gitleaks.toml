@@ -1,0 +1,29 @@
+# Project gitleaks config. Auto-discovered by `gitleaks dir .` when no
+# GITLEAKS_CONFIG env var is set (CI and most contributors). Extends the
+# bundled default rules and adds path allowlists for artefacts that
+# inevitably trip the defaults but never contain real secrets.
+#
+# Personal global configs (via $GITLEAKS_CONFIG) override this file; that
+# is correct — personal rules layer on top for the maintainer's machine
+# (see ~/.config/gitleaks/gitleaks.toml on this maintainer's host).
+
+title = "Flight Academy project gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Project-level path allowlist additions"
+paths = [
+    # Rust cargo build output. Dep `.rmeta` files embed compiled identifier
+    # strings (e.g. `private_key` from sqlx_postgres' TLS auth code) that
+    # match default rules without being secrets. `target/` is gitignored
+    # and never committed; scanning it is wasted work on every contributor's
+    # machine and in CI.
+    '''(?:^|/)target/''',
+    # gitleaks' own ignore-fingerprint file. Defaults allowlist gitleaks.toml
+    # but not .gitleaksignore — the rationale (meta-file, not source
+    # content) is identical; without this, the descriptive comments inside
+    # .gitleaksignore can themselves self-fire.
+    '''(?:^|/)\.gitleaksignore$''',
+]
