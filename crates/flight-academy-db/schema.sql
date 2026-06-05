@@ -238,6 +238,19 @@ CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON public.audit_events FOR E
 
 
 --
+-- Name: audit_events; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.audit_events ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: audit_events audit_events_tenant_isolation; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY audit_events_tenant_isolation ON public.audit_events FOR SELECT TO app_api USING (((chain_kind = 'tenant'::text) AND (chain_id = (NULLIF(current_setting('app.current_tenant'::text, true), ''::text))::uuid)));
+
+
+--
 -- PostgreSQL database dump complete
 --
 

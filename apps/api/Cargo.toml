@@ -19,18 +19,20 @@ path = "src/main.rs"
 embedded-static = []
 
 [dependencies]
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["macros"] }
 clap = { version = "4.6.1", features = ["derive"] }
 derive_more = { version = "2.1.1", features = ["from"] }
+flight-academy-auth = { version = "0.1.0", path = "../../crates/flight-academy-auth" }
 flight-academy-core = { version = "0.1.0", path = "../../crates/flight-academy-core" }
 flight-academy-db = { version = "0.1.0", path = "../../crates/flight-academy-db" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.3"
 tower-http = { version = "0.6.11", features = ["request-id", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
-utoipa = { version = "5.5.0", features = ["axum_extras"] }
+utoipa = { version = "5.5.0", features = ["axum_extras", "uuid"] }
 utoipa-axum = "0.2.0"
-uuid = { version = "1.23.2", features = ["v7"] }
+uuid = { version = "1.23.2", features = ["serde", "v7"] }

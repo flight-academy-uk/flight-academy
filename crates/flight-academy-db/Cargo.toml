@@ -10,3 +10,4 @@ publish.workspace = true
 derive_more = { version = "2.1.1", features = ["from"] }
 flight-academy-core = { version = "0.1.0", path = "../flight-academy-core" }
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "macros", "migrate"] }
+uuid = { version = "1.23.2", features = ["v4"] }
