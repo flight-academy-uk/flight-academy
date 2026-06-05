@@ -7,6 +7,7 @@ members = [
     "crates/flight-academy-aviation",
     "crates/flight-academy-store",
     "crates/flight-academy-integrations",
+    "crates/flight-academy-test-support",
     "apps/api",
 ]
 
