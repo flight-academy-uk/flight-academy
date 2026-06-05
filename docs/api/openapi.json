@@ -10,6 +10,67 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/v1/tenants/{tenant_id}/audit-events/count": {
+      "get": {
+        "summary": "Tenant-scoped audit-event count — the walking-skeleton route that proves\nthe ABAC + RLS round-trip end to end. Subject is extracted by\n`middleware::dev_auth`; the `TenantOwnership` policy checks that the\ncaller's tenant matches the path tenant; `Db::begin_tenant` opens a\ntransaction with `SET LOCAL ROLE app_api` + the `app.current_tenant`\nGUC so the SELECT below is filtered by the RLS policy on `audit_events`.",
+        "description": "Real audit-event browsing belongs in the staff plane (`apps/admin`,\nADR-010 §I); this counts rows for the WS#4 demonstration without\nexposing audit content.",
+        "operationId": "audit_event_count",
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "description": "Tenant UUID. Slug-based addressing per ADR-006 §C lands with the tenants resource.",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Audit-event count for the tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditEventCount"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated subject",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Subject's tenant does not match path tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/healthz": {
       "get": {
         "summary": "Liveness probe. Returned 200 means the process is running and the HTTP\nstack is responsive; readiness (DB, KMS, object store) will live behind\na separate `/readyz` per ADR-002 §G when those dependencies land.",
@@ -31,6 +92,18 @@
   },
   "components": {
     "schemas": {
+      "AuditEventCount": {
+        "type": "object",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "HealthResponse": {
         "type": "object",
         "required": [

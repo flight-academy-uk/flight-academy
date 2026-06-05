@@ -59,6 +59,9 @@ fn emit_spec() -> Result<()> {
 async fn serve() -> Result<()> {
     init_tracing();
 
+    let database_url = env_var("DATABASE_URL")?;
+    let db = flight_academy_db::Db::connect(&database_url).await?;
+
     // Secure-by-default per ADR-004 §F / ADR-016 §E: loopback-only for
     // native `cargo run`. Containers (Dockerfile / Helm / docker-compose)
     // override with `BIND_ADDR=0.0.0.0:8080` since the container's network
@@ -66,7 +69,8 @@ async fn serve() -> Result<()> {
     let addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:8080".to_string());
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!(%addr, "flight-academy listening");
-    axum::serve(listener, flight_academy_api::app()).await?;
+    let app = flight_academy_api::app().layer(axum::Extension(db));
+    axum::serve(listener, app).await?;
     Ok(())
 }
 

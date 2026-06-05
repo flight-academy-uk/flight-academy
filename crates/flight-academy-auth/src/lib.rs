@@ -1,4 +1,21 @@
-//! flight-academy-auth — ABAC, passwordless sessions, WebAuthn/magic-link/push.
+//! flight-academy-auth — ABAC primitives per ADR-001 §C and ADR-010 §B.
 //!
-//! Skeleton; populated by subsequent commits per ADR-005 §C, ADR-001 §C/§F,
-//! ADR-011, and ADR-013.
+//! Walking-skeleton scope (WS#4): types + one concrete policy. Passwordless
+//! sessions (ADR-001 §F), WebAuthn / magic-link / push (ADR-013), and the
+//! richer role/attribute taxonomies land alongside the subsystems that
+//! need them.
+
+mod policy;
+mod resource;
+mod subject;
+
+pub use policy::{Decision, Policy, TenantOwnership};
+pub use resource::{Resource, ResourceAttributes, ResourceKind};
+pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
+
+/// Stub set. Grows as endpoints land — the WS#4 demonstration route
+/// uses `ListAuditEvents`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Action {
+    ListAuditEvents,
+}

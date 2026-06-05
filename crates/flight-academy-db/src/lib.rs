@@ -11,7 +11,8 @@ mod error;
 
 pub use error::{Error, Result};
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool, Postgres, Transaction};
+use uuid::Uuid;
 
 /// Connection pool handle. Constructed via [`Db::connect`], drives
 /// migrations via [`Db::migrate`], and exposes the underlying [`PgPool`]
@@ -37,6 +38,51 @@ impl Db {
     /// no-op when the database is already at the latest version.
     pub async fn migrate(&self) -> Result<()> {
         sqlx::migrate!("./migrations").run(&self.pool).await?;
+        Ok(())
+    }
+
+    /// Begin a transaction with the active tenant context set.
+    ///
+    /// Both `SET LOCAL ROLE app_api` and
+    /// `SET LOCAL app.current_tenant = '<uuid>'` are issued inside the
+    /// transaction so they reset at commit / rollback — safe with the
+    /// pooled connection. The role drop is what makes RLS actually apply
+    /// (the pool's session role is normally a superuser, which RLS would
+    /// otherwise bypass); the GUC is what
+    /// `audit_events_tenant_isolation` reads in its USING clause
+    /// (migration `20260605120000_audit_events_rls.sql`).
+    pub async fn begin_tenant(&self, tenant_id: Uuid) -> Result<TenantTx> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SET LOCAL ROLE app_api")
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
+            .bind(tenant_id.to_string())
+            .execute(&mut *tx)
+            .await?;
+        Ok(TenantTx { tx })
+    }
+}
+
+/// Transaction handle scoped to a single tenant. Obtained via
+/// [`Db::begin_tenant`]; queries on [`TenantTx::conn`] see only the
+/// rows RLS permits for that tenant.
+pub struct TenantTx {
+    tx: Transaction<'static, Postgres>,
+}
+
+impl TenantTx {
+    pub fn conn(&mut self) -> &mut PgConnection {
+        &mut self.tx
+    }
+
+    pub async fn commit(self) -> Result<()> {
+        self.tx.commit().await?;
+        Ok(())
+    }
+
+    pub async fn rollback(self) -> Result<()> {
+        self.tx.rollback().await?;
         Ok(())
     }
 }

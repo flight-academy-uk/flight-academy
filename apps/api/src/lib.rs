@@ -11,11 +11,17 @@ mod middleware;
 
 pub use error::{ApiError, ProblemDetails};
 
-use axum::Json;
+use axum::{Extension, Json, extract::Path};
+use flight_academy_auth::{
+    Action, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Subject, TenantOwnership,
+};
+use flight_academy_core::Error;
+use flight_academy_db::Db;
 use serde::Serialize;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use utoipa::{OpenApi, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
+use uuid::Uuid;
 
 #[derive(Serialize, ToSchema)]
 pub struct HealthResponse {
@@ -36,6 +42,59 @@ async fn healthz() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct AuditEventCount {
+    pub count: i64,
+}
+
+/// Tenant-scoped audit-event count — the walking-skeleton route that proves
+/// the ABAC + RLS round-trip end to end. Subject is extracted by
+/// `middleware::dev_auth`; the `TenantOwnership` policy checks that the
+/// caller's tenant matches the path tenant; `Db::begin_tenant` opens a
+/// transaction with `SET LOCAL ROLE app_api` + the `app.current_tenant`
+/// GUC so the SELECT below is filtered by the RLS policy on `audit_events`.
+///
+/// Real audit-event browsing belongs in the staff plane (`apps/admin`,
+/// ADR-010 §I); this counts rows for the WS#4 demonstration without
+/// exposing audit content.
+#[utoipa::path(
+    get,
+    path = "/api/v1/tenants/{tenant_id}/audit-events/count",
+    params(
+        ("tenant_id" = Uuid, Path, description = "Tenant UUID. Slug-based addressing per ADR-006 §C lands with the tenants resource."),
+    ),
+    responses(
+        (status = 200, description = "Audit-event count for the tenant", body = AuditEventCount),
+        (status = 401, description = "No authenticated subject", body = ProblemDetails),
+        (status = 403, description = "Subject's tenant does not match path tenant", body = ProblemDetails),
+        (status = 500, description = "Internal error", body = ProblemDetails),
+    ),
+)]
+async fn audit_event_count(
+    Extension(db): Extension<Db>,
+    Extension(subject): Extension<Subject>,
+    Path(tenant_id): Path<Uuid>,
+) -> Result<Json<AuditEventCount>, ApiError> {
+    let resource = Resource {
+        tenant_id,
+        kind: ResourceKind::AuditEvent,
+        owner: None,
+        attributes: ResourceAttributes,
+    };
+    match TenantOwnership.permit(&subject, Action::ListAuditEvents, &resource) {
+        Decision::Permit => {}
+        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
+    }
+
+    let mut tx = db.begin_tenant(tenant_id).await?;
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events")
+        .fetch_one(tx.conn())
+        .await?;
+    tx.commit().await?;
+
+    Ok(Json(AuditEventCount { count }))
+}
+
 #[derive(OpenApi)]
 #[openapi(
     info(
@@ -54,6 +113,11 @@ struct Built {
 }
 
 fn build() -> Built {
+    // Tenant-scoped product-API routes — all gated by dev_auth in WS#4.
+    let tenant_routes = OpenApiRouter::new()
+        .routes(routes!(audit_event_count))
+        .route_layer(axum::middleware::from_fn(middleware::dev_auth));
+
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
     // OUTSIDE the previous one): `Propagate` is applied first so it ends up
     // INNER; `Set` is applied second so it ends up OUTER. On request, Set
@@ -63,6 +127,7 @@ fn build() -> Built {
     // outbound `x-request-id` header reliable per ADR-004 §B.
     let (router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(healthz))
+        .merge(tenant_routes)
         .layer(PropagateRequestIdLayer::new(middleware::X_REQUEST_ID))
         .layer(SetRequestIdLayer::new(
             middleware::X_REQUEST_ID,
@@ -72,7 +137,9 @@ fn build() -> Built {
     Built { router, openapi }
 }
 
-/// Construct the axum router used by the `serve` subcommand and integration tests.
+/// Construct the axum router used by the `serve` subcommand and integration
+/// tests. Caller attaches `Extension(Db)` after construction — the DB is a
+/// runtime concern (serve has one, emit-spec doesn't).
 pub fn app() -> axum::Router {
     build().router
 }
