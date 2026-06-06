@@ -328,6 +328,58 @@ async fn tenant_delete_missing_reason_is_bad_request() {
 }
 
 #[tokio::test]
+async fn tenant_delete_oversized_reason_is_bad_request() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    // 1001-char string exceeds the 1000-char cap.
+    let oversized = "x".repeat(1001);
+    let body = serde_json::json!({ "deletion_reason": oversized });
+    let mut req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn tenant_patch_on_soft_deleted_tenant_is_not_found() {
+    // Contract test: PATCH on a soft-deleted tenant returns 404, not 500.
+    // The slug-lookup path covers the obvious case (`resolve_tenant`
+    // filters `deleted_at IS NULL`). The narrower race where the delete
+    // wins *between* slug-lookup and the UPDATE is protected by
+    // `try_tenant_patch_once`'s `fetch_optional` + `Option<None>` arm —
+    // not directly exercised here (would need coordinated two-task
+    // sequencing), but the end-state contract is the same.
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    sqlx::query("UPDATE tenants SET deleted_at = now(), deletion_reason = 'test' WHERE id = $1")
+        .bind(alpha.id)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"x"}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn tenant_delete_non_admin_is_forbidden() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;

@@ -187,12 +187,16 @@ pub async fn tenant_patch(
     // Retry on SERIALIZABLE conflict only; other errors propagate. The
     // audit writer cannot retry on its own behalf in in-tx mode — it has
     // no view of our UPDATE and would leave a half-applied state on
-    // conflict.
+    // conflict. `try_tenant_patch_once` returns `Option<Tenant>`: `None`
+    // means the tenant was concurrently soft-deleted between the slug
+    // resolution (outside the tx) and the UPDATE (inside the tx) — that
+    // surfaces as 404 here, matching what the next read would have seen.
     let updated = retry_serializable(
         || try_tenant_patch_once(&db, &subject, &tenant, &req),
         tenant.id,
     )
-    .await?;
+    .await?
+    .ok_or(Error::NotFound { resource: "tenant" })?;
     Ok(Json(updated.into()))
 }
 
@@ -231,7 +235,7 @@ async fn try_tenant_patch_once(
     subject: &Subject,
     tenant: &Tenant,
     req: &TenantPatchRequest,
-) -> Result<Tenant, flight_academy_db::Error> {
+) -> Result<Option<Tenant>, flight_academy_db::Error> {
     let mut tx = db.pool().begin().await?;
     sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
         .execute(&mut *tx)
@@ -239,8 +243,10 @@ async fn try_tenant_patch_once(
 
     // Apply UPDATE conditionally on which fields are present. Use a
     // single statement with COALESCE so the audit chain sees one event
-    // regardless of how many fields changed.
-    let updated: Tenant = sqlx::query_as(
+    // regardless of how many fields changed. `fetch_optional` (not
+    // `fetch_one`) so a concurrent soft-delete between resolve_tenant
+    // and now returns `Ok(None)` → 404, not a `RowNotFound` → 500.
+    let updated: Option<Tenant> = sqlx::query_as(
         "UPDATE tenants
             SET name     = COALESCE($1, name),
                 settings = COALESCE($2, settings)
@@ -251,8 +257,16 @@ async fn try_tenant_patch_once(
     .bind(req.name.as_deref())
     .bind(req.settings.as_ref())
     .bind(tenant.id)
-    .fetch_one(&mut *tx)
+    .fetch_optional(&mut *tx)
     .await?;
+
+    let Some(updated) = updated else {
+        // Concurrent soft-delete won the race. Commit the empty tx
+        // (nothing to write, nothing to audit) and surface NotFound to
+        // the caller.
+        tx.commit().await?;
+        return Ok(None);
+    };
 
     let changes = patch_diff(tenant, &updated);
     let payload = serde_json::json!({
@@ -269,7 +283,7 @@ async fn try_tenant_patch_once(
     .await?;
 
     tx.commit().await?;
-    Ok(updated)
+    Ok(Some(updated))
 }
 
 fn patch_diff(before: &Tenant, after: &Tenant) -> serde_json::Value {
@@ -332,6 +346,18 @@ pub async fn tenant_delete(
         return Err(Error::Validation {
             field: "deletion_reason",
             message: "must be non-empty".to_string(),
+        }
+        .into());
+    }
+    // Cap on the free-form deletion_reason. The string lands in the audit
+    // event payload; without an upper bound, a tenant-admin could push
+    // an arbitrarily large value into that tenant's audit chain. 1000
+    // chars is generous for the human-rationale shape (a short paragraph)
+    // while bounding the per-row cost.
+    if reason.chars().count() > 1000 {
+        return Err(Error::Validation {
+            field: "deletion_reason",
+            message: "must be at most 1000 characters".to_string(),
         }
         .into());
     }
