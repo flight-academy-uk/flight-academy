@@ -64,6 +64,10 @@ fn build(with_dev_auth: bool) -> Built {
     // Propagate; on response, Propagate runs first (copy id from extensions
     // onto the response header), then Set. That order is what makes the
     // outbound `x-request-id` header reliable per ADR-004 §B.
+    //
+    // `security_headers` is applied last so it ends up OUTERMOST — it sees
+    // every response (handler output, 404s, 405s, errors from inner layers)
+    // and is the load-bearing baseline per ADR-004 §F / ADR-015 §A.
     let (router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(handlers::health::healthz))
         .merge(tenant_routes)
@@ -72,6 +76,7 @@ fn build(with_dev_auth: bool) -> Built {
             middleware::X_REQUEST_ID,
             middleware::MakeRequestUuidV7,
         ))
+        .layer(axum::middleware::from_fn(middleware::security_headers))
         .split_for_parts();
     Built { router, openapi }
 }
