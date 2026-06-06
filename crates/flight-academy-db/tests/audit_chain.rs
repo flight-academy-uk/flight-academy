@@ -212,10 +212,48 @@ fn rfc3339_formatter_byte_stable() {
     // `occurred_at`; if `time` ever changes the format (trailing zeros,
     // fractional-second width, offset sigil, etc.) without us noticing,
     // every freshly-written chain would diverge from every chain written
-    // before. This pins one known good output as a regression backstop.
+    // before. Two assertions: one whole-second, one microsecond. The
+    // fractional-second case is the one that actually exercises
+    // production input shape — `SELECT now()` returns microsecond
+    // precision and the more likely drift is in fractional-second
+    // elision rules.
     use time::OffsetDateTime;
     use time::format_description::well_known::Rfc3339;
 
-    let dt = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
-    assert_eq!(dt.format(&Rfc3339).unwrap(), "2023-11-14T22:13:20Z");
+    let dt_whole = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+    assert_eq!(dt_whole.format(&Rfc3339).unwrap(), "2023-11-14T22:13:20Z");
+
+    let dt_frac = OffsetDateTime::from_unix_timestamp_nanos(1_700_000_000_123_456_000).unwrap();
+    assert_eq!(
+        dt_frac.format(&Rfc3339).unwrap(),
+        "2023-11-14T22:13:20.123456Z"
+    );
+}
+
+#[test]
+fn serde_jcs_canonical_bytes_stable() {
+    // Companion to `rfc3339_formatter_byte_stable` — pins one known good
+    // JCS output for a representative payload shape. serde_jcs is the
+    // load-bearing canonicalisation step; if it ever changes its output
+    // (key ordering edge cases, Unicode normalisation, number formatting)
+    // on a patch bump, every freshly-written chain would diverge from
+    // every chain written before. This locks in the byte representation
+    // for one fixed input as a regression backstop.
+    let v = serde_json::json!({
+        "action": "tenant.update",
+        "fields": ["name", "settings"],
+        "z_last": 1,
+        "a_first": 2,
+        "nested": {"b": true, "a": null}
+    });
+    let bytes = serde_jcs::to_vec(&v).expect("jcs encode");
+    // JCS sorts keys lexicographically at every level. The expected
+    // string is computed once and pinned; any change in the canonical
+    // output ripples through every chain we've ever written.
+    let expected = r#"{"a_first":2,"action":"tenant.update","fields":["name","settings"],"nested":{"a":null,"b":true},"z_last":1}"#;
+    assert_eq!(
+        std::str::from_utf8(&bytes).unwrap(),
+        expected,
+        "serde_jcs canonical output drifted"
+    );
 }
