@@ -10,20 +10,88 @@
     "version": "0.1.0"
   },
   "paths": {
-    "/api/v1/tenants/{tenant_id}/audit-events/count": {
+    "/api/v1/tenants/{tenant}": {
       "get": {
-        "summary": "Tenant-scoped audit-event count — the walking-skeleton route that proves\nthe ABAC + RLS round-trip end to end. Subject is extracted by\n`middleware::dev_auth`; the `TenantOwnership` policy checks that the\ncaller's tenant matches the path tenant; `Db::begin_tenant` opens a\ntransaction with `SET LOCAL ROLE app_api` + the `app.current_tenant`\nGUC so the SELECT below is filtered by the RLS policy on `audit_events`.",
+        "summary": "GET a tenant by slug. Returns the public read shape if the subject is\npermitted to see this tenant (today: TenantOwnership, i.e. the subject\nbelongs to it).",
+        "operationId": "tenant_get",
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "description": "Tenant slug per ADR-006 §C.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tenant profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated subject",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Subject is not a member of this tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No live tenant with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tenants/{tenant}/audit-events/count": {
+      "get": {
+        "summary": "Tenant-scoped audit-event count — the walking-skeleton round-trip that\nproves ABAC + RLS end to end, now slug-addressed per ADR-006 §C.\nSubject is extracted by `middleware::dev_auth`; the slug → id lookup\nhappens before policy evaluation (unknown slug → 404, mismatched tenant\n→ 403); `Db::begin_tenant` opens a transaction with `SET LOCAL ROLE\napp_api` + the `app.current_tenant` GUC so the SELECT below is filtered\nby the RLS policy on `audit_events`.",
         "description": "Real audit-event browsing belongs in the staff plane (`apps/admin`,\nADR-010 §I); this counts rows for the WS#4 demonstration without\nexposing audit content.",
         "operationId": "audit_event_count",
         "parameters": [
           {
-            "name": "tenant_id",
+            "name": "tenant",
             "in": "path",
-            "description": "Tenant UUID. Slug-based addressing per ADR-006 §C lands with the tenants resource.",
+            "description": "Tenant slug per ADR-006 §C.",
             "required": true,
             "schema": {
-              "type": "string",
-              "format": "uuid"
+              "type": "string"
             }
           }
         ],
@@ -50,6 +118,16 @@
           },
           "403": {
             "description": "Subject's tenant does not match path tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No live tenant with that slug",
             "content": {
               "application/json": {
                 "schema": {
@@ -151,6 +229,33 @@
             "type": "string"
           },
           "type": {
+            "type": "string"
+          }
+        }
+      },
+      "TenantResponse": {
+        "type": "object",
+        "description": "Public read shape for a tenant. Mirrors `flight_academy_db::Tenant`\nminus internals; sensitivity-classed fields (DEK wrapping, deletion\nmetadata, etc.) are not in the wire shape per ADR-008 §B.",
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "tenant_type",
+          "settings"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "settings": {},
+          "slug": {
+            "type": "string"
+          },
+          "tenant_type": {
             "type": "string"
           }
         }

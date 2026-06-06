@@ -43,6 +43,20 @@ END;
 $$;
 
 
+--
+-- Name: tenants_bump_updated_at(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.tenants_bump_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -123,6 +137,27 @@ CREATE TABLE public.audit_events_2026_07 (
 
 
 --
+-- Name: tenants; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tenants (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    slug text NOT NULL,
+    name text NOT NULL,
+    tenant_type text NOT NULL,
+    settings jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    deleted_at timestamp with time zone,
+    deletion_reason text,
+    CONSTRAINT tenants_deletion_consistency CHECK ((((deleted_at IS NULL) AND (deletion_reason IS NULL)) OR ((deleted_at IS NOT NULL) AND (deletion_reason IS NOT NULL)))),
+    CONSTRAINT tenants_name_check CHECK (((length(name) >= 1) AND (length(name) <= 200))),
+    CONSTRAINT tenants_slug_check CHECK ((slug ~ '^[a-z][a-z0-9-]{1,62}$'::text)),
+    CONSTRAINT tenants_tenant_type_check CHECK ((tenant_type = ANY (ARRAY['ato'::text, 'part_145'::text, 'airfield_operator'::text])))
+);
+
+
+--
 -- Name: audit_events_2026_06; Type: TABLE ATTACH; Schema: public; Owner: -
 --
 
@@ -169,6 +204,14 @@ ALTER TABLE ONLY public.audit_events_2026_07
 
 
 --
+-- Name: tenants tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenants
+    ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: audit_events_chain_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -187,6 +230,20 @@ CREATE INDEX audit_events_2026_06_chain_kind_chain_id_occurred_at_idx ON public.
 --
 
 CREATE INDEX audit_events_2026_07_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_07 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: tenants_slug_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX tenants_slug_unique ON public.tenants USING btree (slug) WHERE (deleted_at IS NULL);
+
+
+--
+-- Name: tenants_updated_at_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX tenants_updated_at_id_idx ON public.tenants USING btree (updated_at, id);
 
 
 --
@@ -236,6 +293,13 @@ CREATE TRIGGER audit_events_no_truncate BEFORE TRUNCATE ON public.audit_events F
 --
 
 CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON public.audit_events FOR EACH STATEMENT EXECUTE FUNCTION public.audit_events_immutable();
+
+
+--
+-- Name: tenants tenants_bump_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER tenants_bump_updated_at BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION public.tenants_bump_updated_at();
 
 
 --
