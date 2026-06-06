@@ -294,6 +294,61 @@ pub async fn write_tenant_audit_event_in_tx(
     })
 }
 
+/// Verify that the given connection's session role can drive the audit
+/// chain writer. Designed to be called once at process startup against a
+/// connection acquired from the same pool the writer will use.
+///
+/// Three capabilities are checked, against `current_user` on `conn`:
+///
+/// 1. **INSERT grant** on `audit_events` — without this the writer's
+///    INSERT fails immediately with a SQL error. Loud failure at first
+///    write; checking at startup turns it into refuse-to-start.
+/// 2. **SELECT grant** on `audit_events` — the `prev_hash` lookup is a
+///    SELECT. Same loud-failure shape as INSERT.
+/// 3. **RLS bypass** — `rolbypassrls OR rolsuper` on the row in
+///    `pg_roles` matching `current_user`. **This is the silent-failure
+///    axis.** Without bypass, the chain-tip SELECT returns nothing for
+///    rows the RLS policy excludes (and the `audit_events_tenant_isolation`
+///    policy from `20260605120000_audit_events_rls.sql` excludes
+///    everything when `app.current_tenant` is unset, which it is on the
+///    pool path the writer uses — see the pool-role invariant on
+///    [`Db::try_write_tenant_audit_event`]). Every row becomes a new
+///    "first" entry: `prev_hash` is `NULL`, the hash chain forks at
+///    every insert, and no error surfaces at the call site.
+///
+/// PG semantics note: role attributes (BYPASSRLS, SUPERUSER) do not
+/// inherit through `GRANT role TO role` — only the role's own row in
+/// `pg_roles` matters. Checking `current_user` directly is therefore
+/// correct.
+///
+/// Failures produce [`Error::AuditPoolRoleUnfit`] carrying which
+/// specific capabilities were missing, so the operator log line is
+/// actionable.
+pub async fn verify_pool_role(conn: &mut sqlx::PgConnection) -> Result<()> {
+    let (role, can_insert, can_select, bypasses_rls): (String, bool, bool, bool) = sqlx::query_as(
+        "SELECT
+             current_user::text,
+             has_table_privilege(current_user, 'audit_events', 'INSERT'),
+             has_table_privilege(current_user, 'audit_events', 'SELECT'),
+             COALESCE(
+                 (SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user),
+                 false
+             )",
+    )
+    .fetch_one(&mut *conn)
+    .await?;
+
+    if can_insert && can_select && bypasses_rls {
+        return Ok(());
+    }
+    Err(Error::AuditPoolRoleUnfit {
+        role,
+        can_insert,
+        can_select,
+        bypasses_rls,
+    })
+}
+
 /// Re-derive the `payload_hash` for a row from its persisted constituent
 /// fields. Used by chain-integrity verifiers (tests today, the periodic
 /// audit verifier per ADR-004 §H later) to detect rows whose `payload` or

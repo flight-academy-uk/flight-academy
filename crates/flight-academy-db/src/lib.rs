@@ -60,6 +60,17 @@ impl Db {
         Ok(())
     }
 
+    /// Pre-flight the audit chain writer's pool-role invariant against
+    /// this pool. Acquires a connection and runs [`audit::verify_pool_role`]
+    /// against it — see that function for what is checked and why the
+    /// silent-failure mode (RLS without bypass) matters most. Intended
+    /// to be called once during the `serve` startup path, after
+    /// [`Db::migrate`] and before binding the listener.
+    pub async fn verify_audit_pool_role(&self) -> Result<()> {
+        let mut conn = self.pool.acquire().await?;
+        audit::verify_pool_role(&mut conn).await
+    }
+
     /// Begin a transaction with the active tenant context set.
     ///
     /// Both `SET LOCAL ROLE app_api` and

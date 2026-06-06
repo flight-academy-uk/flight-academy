@@ -62,6 +62,15 @@ async fn serve() -> Result<()> {
     let database_url = env_var("DATABASE_URL")?;
     let db = flight_academy_db::Db::connect(&database_url).await?;
 
+    // Refuse to start with a pool that cannot drive the audit chain
+    // writer. The silent failure mode (RLS-subjected pool role → empty
+    // `prev_hash` lookup → chain forks at every insert) is the one this
+    // pre-flight closes; the loud failure modes (missing INSERT/SELECT
+    // grant) would surface at first audit-emitting request but are
+    // checked here too so the operator sees the same diagnostic shape
+    // for all three. See `flight_academy_db::audit::verify_pool_role`.
+    db.verify_audit_pool_role().await?;
+
     // Secure-by-default per ADR-004 §F / ADR-016 §E: loopback-only for
     // native `cargo run`. Containers (Dockerfile / Helm / docker-compose)
     // override with `BIND_ADDR=0.0.0.0:8080` since the container's network
