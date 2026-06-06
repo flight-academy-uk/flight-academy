@@ -5,7 +5,7 @@
 //! the minimum policy any tenant-scoped product-API call must pass; richer
 //! policies (role-gated, attribute-gated) layer on top in later commits.
 
-use crate::{Action, Resource, Subject};
+use crate::{Action, Resource, Role, Subject};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Decision {
@@ -41,6 +41,34 @@ impl Policy for TenantOwnership {
             None => Decision::Deny {
                 reason: "subject has no tenant context".to_string(),
             },
+        }
+    }
+}
+
+/// Tenant administration: composes [`TenantOwnership`] with a
+/// `Role::TenantAdmin` requirement. Gates mutation endpoints on the
+/// tenants resource (PATCH / DELETE today; future tenant-admin-only
+/// actions inherit this policy).
+///
+/// Composition order matters for the deny reason: `TenantOwnership`
+/// fires first because a non-owner is more diagnostically a 403 "not
+/// your tenant" than "missing role". A non-owner with the role is still
+/// denied — the role doesn't unlock cross-tenant administration.
+pub struct TenantAdministration;
+
+impl Policy for TenantAdministration {
+    fn permit(&self, subject: &Subject, action: Action, resource: &Resource) -> Decision {
+        match TenantOwnership.permit(subject, action, resource) {
+            Decision::Permit => {
+                if subject.roles.contains(&Role::TenantAdmin) {
+                    Decision::Permit
+                } else {
+                    Decision::Deny {
+                        reason: "subject is not a tenant-admin".to_string(),
+                    }
+                }
+            }
+            other => other,
         }
     }
 }

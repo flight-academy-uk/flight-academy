@@ -15,7 +15,7 @@
 
 use std::collections::BTreeSet;
 
-use flight_academy_auth::{ActorClass, Subject, SubjectAttributes};
+use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
 use flight_academy_db::{Db, Tenant};
 use sqlx::PgPool;
 use testcontainers_modules::{
@@ -128,16 +128,33 @@ pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> 
         .expect("seeded tenant exists")
 }
 
-/// Build a Member-class `Subject` for tests. The richer slots (roles,
-/// attributes, elevation) stay at their stub defaults — those slots are
-/// not yet read by any policy and exercising them belongs in the PRs
-/// that populate them.
+/// Build a Member-class `Subject` for tests. The richer slots
+/// (attributes, elevation) stay at their stub defaults — those slots
+/// are not yet read by any policy and exercising them belongs in the
+/// PRs that populate them.
 pub fn member_subject(tenant_id: Uuid) -> Subject {
     Subject {
         user_id: Uuid::new_v4(),
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles: BTreeSet::new(),
+        attributes: SubjectAttributes,
+        elevation: None,
+    }
+}
+
+/// Build a Member-class `Subject` carrying the `TenantAdmin` role. The
+/// caller passes the tenant id the subject is a member-admin of; the
+/// role only unlocks administration of *that* tenant via the
+/// `TenantAdministration` policy.
+pub fn tenant_admin_subject(tenant_id: Uuid) -> Subject {
+    let mut roles = BTreeSet::new();
+    roles.insert(Role::TenantAdmin);
+    Subject {
+        user_id: Uuid::new_v4(),
+        actor_class: ActorClass::Member,
+        tenant_id: Some(tenant_id),
+        roles,
         attributes: SubjectAttributes,
         elevation: None,
     }

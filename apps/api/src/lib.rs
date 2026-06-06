@@ -17,7 +17,7 @@ mod middleware;
 pub use error::{ApiError, ProblemDetails};
 pub use handlers::audit_events::AuditEventCount;
 pub use handlers::health::HealthResponse;
-pub use handlers::tenants::TenantResponse;
+pub use handlers::tenants::{TenantDeleteRequest, TenantPatchRequest, TenantResponse};
 
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use utoipa::OpenApi;
@@ -47,7 +47,11 @@ fn build(with_dev_auth: bool) -> Built {
     // extensions and exercise the policy + RLS path without env-var
     // dependence.
     let mut tenant_routes = OpenApiRouter::new()
-        .routes(routes!(handlers::tenants::tenant_get))
+        .routes(routes!(
+            handlers::tenants::tenant_get,
+            handlers::tenants::tenant_patch,
+            handlers::tenants::tenant_delete
+        ))
         .routes(routes!(handlers::audit_events::audit_event_count));
     if with_dev_auth {
         tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn(middleware::dev_auth));

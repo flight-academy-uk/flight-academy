@@ -9,7 +9,7 @@ mod policy;
 mod resource;
 mod subject;
 
-pub use policy::{Decision, Policy, TenantOwnership};
+pub use policy::{Decision, Policy, TenantAdministration, TenantOwnership};
 pub use resource::{Resource, ResourceAttributes, ResourceKind};
 pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
 
@@ -18,4 +18,6 @@ pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
 pub enum Action {
     ListAuditEvents,
     ReadTenant,
+    UpdateTenant,
+    DeleteTenant,
 }

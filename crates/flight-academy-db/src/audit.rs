@@ -136,7 +136,7 @@ impl Db {
         unreachable!("retry loop must return inside the loop");
     }
 
-    /// # Pool-role invariant
+    /// # Pool-role invariant (applies to this helper too)
     ///
     /// This method begins its transaction via `self.pool.begin()` — the
     /// pool's session role directly, **not** `begin_tenant`. Two reasons:
@@ -154,7 +154,9 @@ impl Db {
     /// policy for the audit chain writer must be added first — otherwise
     /// the `prev_hash` lookup will silently return `None` and every row
     /// will begin a new "first" entry, breaking chain integrity without
-    /// any error surface.
+    /// any error surface. The same invariant holds for any caller of
+    /// [`write_tenant_audit_event_in_tx`] — they must open their tx on a
+    /// pool whose role bypasses RLS.
     async fn try_write_tenant_audit_event(
         &self,
         actor_class: &'static str,
@@ -166,98 +168,130 @@ impl Db {
         sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
             .execute(&mut *tx)
             .await?;
-
-        // Read the tip of this tenant's chain. The chain index
-        // (`audit_events_chain_idx` from migration 20260605000000) covers
-        // `(chain_kind, chain_id, occurred_at)`; the ORDER BY uses
-        // `occurred_at DESC, id DESC` so a same-microsecond tie resolves
-        // deterministically (id is the within-partition tiebreaker the
-        // PK includes).
-        let prev_hash: Option<Vec<u8>> = sqlx::query_scalar(
-            "SELECT payload_hash FROM audit_events
-              WHERE chain_kind = 'tenant' AND chain_id = $1
-              ORDER BY occurred_at DESC, id DESC
-              LIMIT 1",
-        )
-        .bind(tenant_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        // Generate row identifiers inside the transaction so a serialization
-        // retry uses a fresh timestamp (avoids `(chain_id, occurred_at)`
-        // duplicates if two retries collide on the same microsecond).
-        let occurred_at: OffsetDateTime = sqlx::query_scalar("SELECT now()")
-            .fetch_one(&mut *tx)
+        let ev = write_tenant_audit_event_in_tx(&mut tx, actor_class, actor_id, tenant_id, payload)
             .await?;
-        // UUID v4 (random) here, deliberately not v7. The audit row's
-        // ordering key is `(occurred_at, id)` — the timestamp carries the
-        // ordering, `id` is the within-partition tiebreaker. Leaking a
-        // coarse insert timestamp into the id (as v7 does) would offer no
-        // benefit and would mildly weaken the unguessability property the
-        // verifier-side query relies on for partition-walk correctness.
-        let row_id = Uuid::new_v4();
-
-        // Canonical input. RFC 3339 with UTC offset for occurred_at — a
-        // deterministic byte sequence independent of pg locale or session
-        // timezone. `expect` not `?` here: format on a server-generated
-        // OffsetDateTime never fails; if it does we have a code bug worth
-        // crashing on, not a runtime error to surface to a caller.
-        let occurred_at_str = occurred_at
-            .format(&time::format_description::well_known::Rfc3339)
-            .expect("OffsetDateTime always RFC 3339 formattable");
-        let row_input = CanonicalAuditRow {
-            occurred_at: occurred_at_str,
-            actor_class,
-            actor_id,
-            tenant_id: Some(tenant_id),
-            chain_kind: "tenant",
-            chain_id: Some(tenant_id),
-            payload,
-        };
-        let canonical = serde_jcs::to_vec(&row_input)
-            .expect("CanonicalAuditRow has no non-finite floats; jcs encode is infallible");
-
-        // payload_hash = SHA-256(canonical || prev_hash).
-        //   * For the first row in a chain (prev_hash = NULL), the second
-        //     update is skipped — the canonical input alone determines the
-        //     hash. A `NULL`-vs-`Some(&[])` ambiguity is avoided because
-        //     the column stores NULL distinctly from an empty BYTEA.
-        let mut hasher = Sha256::new();
-        hasher.update(&canonical);
-        if let Some(p) = prev_hash.as_deref() {
-            hasher.update(p);
-        }
-        let payload_hash = hasher.finalize().to_vec();
-
-        sqlx::query(
-            "INSERT INTO audit_events
-                (id, occurred_at, actor_class, actor_id, tenant_id,
-                 chain_kind, chain_id, prev_hash, payload, payload_hash)
-             VALUES
-                ($1, $2, $3, $4, $5,
-                 'tenant', $6, $7, $8, $9)",
-        )
-        .bind(row_id)
-        .bind(occurred_at)
-        .bind(actor_class)
-        .bind(actor_id)
-        .bind(tenant_id)
-        .bind(tenant_id)
-        .bind(prev_hash.as_deref())
-        .bind(payload)
-        .bind(&payload_hash)
-        .execute(&mut *tx)
-        .await?;
-
         tx.commit().await?;
-
-        Ok(AuditEvent {
-            id: row_id,
-            occurred_at,
-            payload_hash,
-            prev_hash,
-        })
+        Ok(ev)
     }
+}
+
+/// Append a tenant-chain audit row inside an existing caller-owned
+/// transaction. Used by mutation handlers (PATCH, DELETE, …) that need
+/// the audit row and the mutation to commit or fail together — calling
+/// [`Db::write_tenant_audit_event`] alongside an UPDATE in two separate
+/// transactions risks the mutation committing while the audit insert
+/// fails (or vice versa), breaking the regulator-facing guarantee that
+/// every state change has a corresponding audit row.
+///
+/// # Caller responsibilities
+///
+/// * Open the transaction at `SERIALIZABLE` isolation. Lower isolation
+///   levels race on the `prev_hash` SELECT — two writers on the same
+///   chain can read the same tip, append independently, and produce a
+///   fork. `SERIALIZABLE` makes one writer retry instead.
+/// * Handle retries. On SQLSTATE `40001` (serialization_failure), roll
+///   back and re-run the whole UPDATE-plus-audit unit. The standalone
+///   [`Db::write_tenant_audit_event`] retries internally; the in-tx
+///   helper cannot, because the retry needs to re-execute the caller's
+///   mutation too.
+/// * Open the transaction on a pool role that bypasses RLS on
+///   `audit_events` (see the pool-role invariant on
+///   [`Db::try_write_tenant_audit_event`]).
+pub async fn write_tenant_audit_event_in_tx(
+    conn: &mut sqlx::PgConnection,
+    actor_class: &'static str,
+    actor_id: Option<Uuid>,
+    tenant_id: Uuid,
+    payload: &serde_json::Value,
+) -> Result<AuditEvent> {
+    // Read the tip of this tenant's chain. The chain index
+    // (`audit_events_chain_idx` from migration 20260605000000) covers
+    // `(chain_kind, chain_id, occurred_at)`; the ORDER BY uses
+    // `occurred_at DESC, id DESC` so a same-microsecond tie resolves
+    // deterministically (id is the within-partition tiebreaker the
+    // PK includes).
+    let prev_hash: Option<Vec<u8>> = sqlx::query_scalar(
+        "SELECT payload_hash FROM audit_events
+          WHERE chain_kind = 'tenant' AND chain_id = $1
+          ORDER BY occurred_at DESC, id DESC
+          LIMIT 1",
+    )
+    .bind(tenant_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+
+    // Generate row identifiers inside the transaction so a serialization
+    // retry uses a fresh timestamp (avoids `(chain_id, occurred_at)`
+    // duplicates if two retries collide on the same microsecond).
+    let occurred_at: OffsetDateTime = sqlx::query_scalar("SELECT now()")
+        .fetch_one(&mut *conn)
+        .await?;
+    // UUID v4 (random) here, deliberately not v7. The audit row's
+    // ordering key is `(occurred_at, id)` — the timestamp carries the
+    // ordering, `id` is the within-partition tiebreaker. Leaking a
+    // coarse insert timestamp into the id (as v7 does) would offer no
+    // benefit and would mildly weaken the unguessability property the
+    // verifier-side query relies on for partition-walk correctness.
+    let row_id = Uuid::new_v4();
+
+    // Canonical input. RFC 3339 with UTC offset for occurred_at — a
+    // deterministic byte sequence independent of pg locale or session
+    // timezone. `expect` not `?` here: format on a server-generated
+    // OffsetDateTime never fails; if it does we have a code bug worth
+    // crashing on, not a runtime error to surface to a caller.
+    let occurred_at_str = occurred_at
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("OffsetDateTime always RFC 3339 formattable");
+    let row_input = CanonicalAuditRow {
+        occurred_at: occurred_at_str,
+        actor_class,
+        actor_id,
+        tenant_id: Some(tenant_id),
+        chain_kind: "tenant",
+        chain_id: Some(tenant_id),
+        payload,
+    };
+    let canonical = serde_jcs::to_vec(&row_input)
+        .expect("CanonicalAuditRow has no non-finite floats; jcs encode is infallible");
+
+    // payload_hash = SHA-256(canonical || prev_hash).
+    //   * For the first row in a chain (prev_hash = NULL), the second
+    //     update is skipped — the canonical input alone determines the
+    //     hash. A `NULL`-vs-`Some(&[])` ambiguity is avoided because
+    //     the column stores NULL distinctly from an empty BYTEA.
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    if let Some(p) = prev_hash.as_deref() {
+        hasher.update(p);
+    }
+    let payload_hash = hasher.finalize().to_vec();
+
+    sqlx::query(
+        "INSERT INTO audit_events
+            (id, occurred_at, actor_class, actor_id, tenant_id,
+             chain_kind, chain_id, prev_hash, payload, payload_hash)
+         VALUES
+            ($1, $2, $3, $4, $5,
+             'tenant', $6, $7, $8, $9)",
+    )
+    .bind(row_id)
+    .bind(occurred_at)
+    .bind(actor_class)
+    .bind(actor_id)
+    .bind(tenant_id)
+    .bind(tenant_id)
+    .bind(prev_hash.as_deref())
+    .bind(payload)
+    .bind(&payload_hash)
+    .execute(&mut *conn)
+    .await?;
+
+    Ok(AuditEvent {
+        id: row_id,
+        occurred_at,
+        payload_hash,
+        prev_hash,
+    })
 }
 
 /// Re-derive the `payload_hash` for a row from its persisted constituent

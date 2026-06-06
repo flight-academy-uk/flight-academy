@@ -77,6 +77,173 @@
             }
           }
         }
+      },
+      "delete": {
+        "summary": "DELETE a tenant by slug — soft-delete (`deleted_at` + `deletion_reason`).\nTenant-admin only (TenantAdministration). The UPDATE and the audit\nrow commit or fail together for the same regulator-facing reason as\nPATCH.",
+        "operationId": "tenant_delete",
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "description": "Tenant slug per ADR-006 §C.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantDeleteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Tenant soft-deleted"
+          },
+          "400": {
+            "description": "deletion_reason missing or empty",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated subject",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Subject is not a tenant-admin of this tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No live tenant with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "PATCH a tenant by slug. Tenant-admin only (TenantAdministration). The\nUPDATE and the audit-event INSERT run in the same SERIALIZABLE\ntransaction so they commit or fail together — see ADR-009 §A on the\nregulator-facing guarantee that every state change has a paired audit\nrow.",
+        "operationId": "tenant_patch",
+        "parameters": [
+          {
+            "name": "tenant",
+            "in": "path",
+            "description": "Tenant slug per ADR-006 §C.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TenantPatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated tenant profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No authenticated subject",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Subject is not a tenant-admin of this tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No live tenant with that slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/tenants/{tenant}/audit-events/count": {
@@ -231,6 +398,31 @@
           "type": {
             "type": "string"
           }
+        }
+      },
+      "TenantDeleteRequest": {
+        "type": "object",
+        "description": "Soft-delete body for `DELETE /api/v1/tenants/{tenant}`. `deletion_reason`\nis required so every deletion carries an auditable rationale. Free-form\nstring for now; the enum form lands with the retention-rules resource.",
+        "required": [
+          "deletion_reason"
+        ],
+        "properties": {
+          "deletion_reason": {
+            "type": "string"
+          }
+        }
+      },
+      "TenantPatchRequest": {
+        "type": "object",
+        "description": "Partial-update body for `PATCH /api/v1/tenants/{tenant}`. Either field\nis optional; omitted fields are left untouched. `slug` and\n`tenant_type` are intentionally not editable — both are identity-shaped\n(URL stability, regulatory operator class) and changes deserve their\nown endpoints with separate semantics.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "settings": {}
         }
       },
       "TenantResponse": {
