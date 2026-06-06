@@ -9,9 +9,14 @@ publish.workspace = true
 [dependencies]
 derive_more = { version = "2.1.1", features = ["from"] }
 flight-academy-core = { version = "0.1.0", path = "../flight-academy-core" }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_jcs = "0.2.0"
 serde_json = "1.0.150"
+sha2 = "0.11.0"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "macros", "migrate", "json"] }
-uuid = { version = "1.23.2", features = ["v4"] }
+time = { version = "0.3.47", features = ["formatting"] }
+tracing = "0.1.44"
+uuid = { version = "1.23.2", features = ["serde", "v4"] }
 
 [dev-dependencies]
 flight-academy-test-support = { version = "0.1.0", path = "../flight-academy-test-support" }

@@ -81,7 +81,7 @@
     },
     "/api/v1/tenants/{tenant}/audit-events/count": {
       "get": {
-        "summary": "Tenant-scoped audit-event count — the walking-skeleton round-trip that\nproves ABAC + RLS end to end, now slug-addressed per ADR-006 §C.\nSubject is extracted by `middleware::dev_auth`; the slug → id lookup\nhappens before policy evaluation (unknown slug → 404, mismatched tenant\n→ 403); `Db::begin_tenant` opens a transaction with `SET LOCAL ROLE\napp_api` + the `app.current_tenant` GUC so the SELECT below is filtered\nby the RLS policy on `audit_events`.",
+        "summary": "Tenant-scoped audit-event count — the walking-skeleton round-trip that\nproves ABAC + RLS end to end. The slug → id lookup happens before\npolicy evaluation (unknown slug → 404, mismatched tenant → 403);\n`Db::begin_tenant` opens a transaction with `SET LOCAL ROLE app_api`\n+ the `app.current_tenant` GUC so the SELECT below is filtered by the\nRLS policy on `audit_events`.",
         "description": "Real audit-event browsing belongs in the staff plane (`apps/admin`,\nADR-010 §I); this counts rows for the WS#4 demonstration without\nexposing audit content.",
         "operationId": "audit_event_count",
         "parameters": [
