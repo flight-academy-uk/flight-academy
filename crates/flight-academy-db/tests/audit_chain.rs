@@ -4,7 +4,6 @@
 use flight_academy_db::Db;
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[tokio::test]
@@ -177,10 +176,4 @@ async fn writer_inserts_row_visible_via_select() {
         .unwrap();
     let stored: Vec<u8> = row.try_get("payload_hash").unwrap();
     assert_eq!(stored, written.payload_hash);
-}
-
-#[allow(dead_code)]
-fn _types_compile() {
-    // Compile-time sanity that OffsetDateTime is reachable here.
-    let _: Option<OffsetDateTime> = None;
 }

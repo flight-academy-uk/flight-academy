@@ -112,7 +112,17 @@ impl Db {
                 {
                     // No backoff — the conflicting writer commits in
                     // microseconds and PG will arbitrate on the next
-                    // SELECT. Re-issue immediately.
+                    // SELECT. Re-issue immediately. Audit chain contention
+                    // is operationally significant (it implies concurrent
+                    // mutations on the same tenant), so the retry is
+                    // logged for the operator to correlate with traffic
+                    // bursts or hot-spot tenants.
+                    tracing::warn!(
+                        %tenant_id,
+                        attempt = attempt + 1,
+                        max_attempts = MAX_SERIALIZATION_RETRIES,
+                        "serialization_failure on audit chain write; retrying"
+                    );
                     continue;
                 }
                 Err(e) => return Err(e),

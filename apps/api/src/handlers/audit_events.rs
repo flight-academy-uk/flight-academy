@@ -25,6 +25,10 @@ pub struct AuditEventCount {
 /// `Db::begin_tenant` opens a transaction with `SET LOCAL ROLE app_api`
 /// + the `app.current_tenant` GUC so the SELECT below is filtered by the
 /// RLS policy on `audit_events`.
+///
+/// Real audit-event browsing belongs in the staff plane (`apps/admin`,
+/// ADR-010 §I); this counts rows for the WS#4 demonstration without
+/// exposing audit content.
 #[utoipa::path(
     get,
     path = "/api/v1/tenants/{tenant}/audit-events/count",
