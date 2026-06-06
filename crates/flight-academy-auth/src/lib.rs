@@ -13,9 +13,9 @@ pub use policy::{Decision, Policy, TenantOwnership};
 pub use resource::{Resource, ResourceAttributes, ResourceKind};
 pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
 
-/// Stub set. Grows as endpoints land — the WS#4 demonstration route
-/// uses `ListAuditEvents`.
+/// Stub set. Grows as endpoints land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     ListAuditEvents,
+    ReadTenant,
 }

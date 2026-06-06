@@ -16,7 +16,7 @@
 use std::collections::BTreeSet;
 
 use flight_academy_auth::{ActorClass, Subject, SubjectAttributes};
-use flight_academy_db::Db;
+use flight_academy_db::{Db, Tenant};
 use sqlx::PgPool;
 use testcontainers_modules::{
     postgres::Postgres,
@@ -102,6 +102,30 @@ pub async fn fresh_db() -> Db {
         .await
         .expect("run migrations");
     Db::from_pool(pool)
+}
+
+/// Seed a tenant row and return the resulting Tenant. Uses the connecting
+/// (superuser) session, so tenant_type is whatever the caller supplied —
+/// the CHECK constraint will reject invalid values, surfacing as a panic
+/// here which is intentional for tests.
+pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> Tenant {
+    let id = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO tenants (id, slug, name, tenant_type)
+         VALUES ($1, $2, $3, $4)",
+    )
+    .bind(id)
+    .bind(slug)
+    .bind(name)
+    .bind(tenant_type)
+    .execute(db.pool())
+    .await
+    .expect("seed tenant");
+
+    db.tenant_by_slug(slug)
+        .await
+        .expect("read seeded tenant")
+        .expect("seeded tenant exists")
 }
 
 /// Build a Member-class `Subject` for tests. The richer slots (roles,

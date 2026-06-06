@@ -787,6 +787,7 @@ dependencies = [
  "derive_more",
  "flight-academy-core",
  "flight-academy-test-support",
+ "serde_json",
  "sqlx",
  "tokio",
  "uuid",

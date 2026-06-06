@@ -16,7 +16,7 @@ use flight_academy_auth::{
     Action, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Subject, TenantOwnership,
 };
 use flight_academy_core::Error;
-use flight_academy_db::Db;
+use flight_academy_db::{Db, Tenant};
 use serde::Serialize;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use utoipa::{OpenApi, ToSchema};
@@ -47,36 +47,108 @@ pub struct AuditEventCount {
     pub count: i64,
 }
 
-/// Tenant-scoped audit-event count — the walking-skeleton route that proves
-/// the ABAC + RLS round-trip end to end. Subject is extracted by
-/// `middleware::dev_auth`; the `TenantOwnership` policy checks that the
-/// caller's tenant matches the path tenant; `Db::begin_tenant` opens a
-/// transaction with `SET LOCAL ROLE app_api` + the `app.current_tenant`
-/// GUC so the SELECT below is filtered by the RLS policy on `audit_events`.
+/// Public read shape for a tenant. Mirrors `flight_academy_db::Tenant`
+/// minus internals; sensitivity-classed fields (DEK wrapping, deletion
+/// metadata, etc.) are not in the wire shape per ADR-008 §B.
+#[derive(Serialize, ToSchema)]
+pub struct TenantResponse {
+    pub id: Uuid,
+    pub slug: String,
+    pub name: String,
+    pub tenant_type: String,
+    pub settings: serde_json::Value,
+}
+
+impl From<Tenant> for TenantResponse {
+    fn from(t: Tenant) -> Self {
+        Self {
+            id: t.id,
+            slug: t.slug,
+            name: t.name,
+            tenant_type: t.tenant_type,
+            settings: t.settings,
+        }
+    }
+}
+
+/// Resolve a path-supplied slug to its tenant row, or map to a 404.
+/// Centralised so every slug-keyed handler returns the same NotFound
+/// shape and doesn't accidentally diverge.
+async fn resolve_tenant(db: &Db, slug: &str) -> Result<Tenant, ApiError> {
+    db.tenant_by_slug(slug)
+        .await?
+        .ok_or_else(|| Error::NotFound { resource: "tenant" }.into())
+}
+
+/// GET a tenant by slug. Returns the public read shape if the subject is
+/// permitted to see this tenant (today: TenantOwnership, i.e. the subject
+/// belongs to it).
+#[utoipa::path(
+    get,
+    path = "/api/v1/tenants/{tenant}",
+    params(
+        ("tenant" = String, Path, description = "Tenant slug per ADR-006 §C."),
+    ),
+    responses(
+        (status = 200, description = "Tenant profile", body = TenantResponse),
+        (status = 401, description = "No authenticated subject", body = ProblemDetails),
+        (status = 403, description = "Subject is not a member of this tenant", body = ProblemDetails),
+        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
+        (status = 500, description = "Internal error", body = ProblemDetails),
+    ),
+)]
+async fn tenant_get(
+    Extension(db): Extension<Db>,
+    Extension(subject): Extension<Subject>,
+    Path(slug): Path<String>,
+) -> Result<Json<TenantResponse>, ApiError> {
+    let tenant = resolve_tenant(&db, &slug).await?;
+    let resource = Resource {
+        tenant_id: tenant.id,
+        kind: ResourceKind::Tenant,
+        owner: None,
+        attributes: ResourceAttributes,
+    };
+    match TenantOwnership.permit(&subject, Action::ReadTenant, &resource) {
+        Decision::Permit => {}
+        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
+    }
+    Ok(Json(tenant.into()))
+}
+
+/// Tenant-scoped audit-event count — the walking-skeleton round-trip that
+/// proves ABAC + RLS end to end, now slug-addressed per ADR-006 §C.
+/// Subject is extracted by `middleware::dev_auth`; the slug → id lookup
+/// happens before policy evaluation (unknown slug → 404, mismatched tenant
+/// → 403); `Db::begin_tenant` opens a transaction with `SET LOCAL ROLE
+/// app_api` + the `app.current_tenant` GUC so the SELECT below is filtered
+/// by the RLS policy on `audit_events`.
 ///
 /// Real audit-event browsing belongs in the staff plane (`apps/admin`,
 /// ADR-010 §I); this counts rows for the WS#4 demonstration without
 /// exposing audit content.
 #[utoipa::path(
     get,
-    path = "/api/v1/tenants/{tenant_id}/audit-events/count",
+    path = "/api/v1/tenants/{tenant}/audit-events/count",
     params(
-        ("tenant_id" = Uuid, Path, description = "Tenant UUID. Slug-based addressing per ADR-006 §C lands with the tenants resource."),
+        ("tenant" = String, Path, description = "Tenant slug per ADR-006 §C."),
     ),
     responses(
         (status = 200, description = "Audit-event count for the tenant", body = AuditEventCount),
         (status = 401, description = "No authenticated subject", body = ProblemDetails),
         (status = 403, description = "Subject's tenant does not match path tenant", body = ProblemDetails),
+        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
         (status = 500, description = "Internal error", body = ProblemDetails),
     ),
 )]
 async fn audit_event_count(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
-    Path(tenant_id): Path<Uuid>,
+    Path(slug): Path<String>,
 ) -> Result<Json<AuditEventCount>, ApiError> {
+    let tenant = resolve_tenant(&db, &slug).await?;
     let resource = Resource {
-        tenant_id,
+        tenant_id: tenant.id,
         kind: ResourceKind::AuditEvent,
         owner: None,
         attributes: ResourceAttributes,
@@ -86,7 +158,7 @@ async fn audit_event_count(
         Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
     }
 
-    let mut tx = db.begin_tenant(tenant_id).await?;
+    let mut tx = db.begin_tenant(tenant.id).await?;
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events")
         .fetch_one(tx.conn())
         .await?;
@@ -118,7 +190,9 @@ fn build(with_dev_auth: bool) -> Built {
     // it so integration tests inject a `Subject` directly into request
     // extensions and exercise the policy + RLS path without env-var
     // dependence.
-    let mut tenant_routes = OpenApiRouter::new().routes(routes!(audit_event_count));
+    let mut tenant_routes = OpenApiRouter::new()
+        .routes(routes!(tenant_get))
+        .routes(routes!(audit_event_count));
     if with_dev_auth {
         tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn(middleware::dev_auth));
     }

@@ -2,11 +2,11 @@
 
 use uuid::Uuid;
 
-/// Stub variant set — grows as domain resources land. `AuditEvent` is
-/// the one consumer that exists today (the WS#4 demonstration route).
+/// Stub variant set — grows as domain resources land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceKind {
     AuditEvent,
+    Tenant,
 }
 
 /// Stub. Per-resource attributes (state, ownership lineage, sensitivity

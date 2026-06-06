@@ -8,8 +8,10 @@
 //! self-host install script per ADR-002 §F / §I).
 
 mod error;
+mod tenants;
 
 pub use error::{Error, Result};
+pub use tenants::Tenant;
 
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
