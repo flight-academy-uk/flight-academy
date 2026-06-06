@@ -14,6 +14,14 @@ pub use error::{Error, Result};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
+/// Embedded migrator. Returned as a value so `flight-academy-test-support`
+/// can drive migrations against a fresh per-test database without needing
+/// to invoke `sqlx::migrate!` from outside this crate (the macro is
+/// path-relative to where it is invoked).
+pub fn migrator() -> sqlx::migrate::Migrator {
+    sqlx::migrate!("./migrations")
+}
+
 /// Connection pool handle. Constructed via [`Db::connect`], drives
 /// migrations via [`Db::migrate`], and exposes the underlying [`PgPool`]
 /// for query helpers in downstream crates via [`Db::pool`].
@@ -28,6 +36,13 @@ impl Db {
         Ok(Self { pool })
     }
 
+    /// Wrap an externally-constructed pool. The test-support crate uses
+    /// this to hand `Db` a pool pointing at a fresh per-test database
+    /// inside a shared testcontainer.
+    pub fn from_pool(pool: PgPool) -> Self {
+        Self { pool }
+    }
+
     pub fn pool(&self) -> &PgPool {
         &self.pool
     }
@@ -37,7 +52,7 @@ impl Db {
     /// `_sqlx_migrations` table records what has been applied; this is a
     /// no-op when the database is already at the latest version.
     pub async fn migrate(&self) -> Result<()> {
-        sqlx::migrate!("./migrations").run(&self.pool).await?;
+        migrator().run(&self.pool).await?;
         Ok(())
     }
 

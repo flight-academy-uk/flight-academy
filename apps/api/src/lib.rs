@@ -112,11 +112,16 @@ struct Built {
     openapi: utoipa::openapi::OpenApi,
 }
 
-fn build() -> Built {
-    // Tenant-scoped product-API routes — all gated by dev_auth in WS#4.
-    let tenant_routes = OpenApiRouter::new()
-        .routes(routes!(audit_event_count))
-        .route_layer(axum::middleware::from_fn(middleware::dev_auth));
+fn build(with_dev_auth: bool) -> Built {
+    // Tenant-scoped product-API routes. Production-mode wraps them in
+    // dev_auth (the walking-skeleton subject extractor); test-mode omits
+    // it so integration tests inject a `Subject` directly into request
+    // extensions and exercise the policy + RLS path without env-var
+    // dependence.
+    let mut tenant_routes = OpenApiRouter::new().routes(routes!(audit_event_count));
+    if with_dev_auth {
+        tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn(middleware::dev_auth));
+    }
 
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
     // OUTSIDE the previous one): `Propagate` is applied first so it ends up
@@ -137,16 +142,24 @@ fn build() -> Built {
     Built { router, openapi }
 }
 
-/// Construct the axum router used by the `serve` subcommand and integration
-/// tests. Caller attaches `Extension(Db)` after construction — the DB is a
-/// runtime concern (serve has one, emit-spec doesn't).
+/// Construct the axum router used by the `serve` subcommand. Caller
+/// attaches `Extension(Db)` after construction — the DB is a runtime
+/// concern (serve has one, emit-spec doesn't).
 pub fn app() -> axum::Router {
-    build().router
+    build(true).router
+}
+
+/// Test-mode router. Identical to [`app`] except the `dev_auth` middleware
+/// is omitted; tenant-scoped routes still require a `Subject` to be
+/// present in request extensions but the test attaches it directly per
+/// request rather than reading env vars.
+pub fn app_for_test() -> axum::Router {
+    build(false).router
 }
 
 /// Produce the assembled OpenAPI document used by the `emit-spec` subcommand
 /// (and any tooling that wants to compare the live contract against the
 /// committed `docs/api/openapi.json` — ADR-006 §A; format per ADR-018).
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    build().openapi
+    build(true).openapi
 }

@@ -10,3 +10,6 @@ publish.workspace = true
 derive_more = { version = "2.1.1", features = ["from"] }
 flight-academy-core = { version = "0.1.0", path = "../flight-academy-core" }
 uuid = { version = "1.23.2", features = ["v4"] }
+
+[dev-dependencies]
+uuid = { version = "1.23.2", features = ["v4"] }

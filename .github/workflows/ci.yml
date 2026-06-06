@@ -1,35 +1,20 @@
-# Continuous integration — placeholder
-#
-# This workflow is intentionally a no-op until the first feature commits
-# land. Once they do, the placeholder job below will be replaced with the
-# real matrix:
-#
-#   Rust (apps/api, crates/*):
-#     - cargo fmt --all -- --check
-#     - cargo clippy --all-targets --all-features -- -D warnings
-#     - cargo test --workspace --all-features
-#     - cargo deny check        (licences, advisories, bans, sources)
-#     - cargo audit             (RustSec advisory database)
-#
-#   Web (apps/web — SvelteKit + Bun):
-#     - bun install --frozen-lockfile
-#     - bun lint
-#     - bun check               (svelte-check)
-#     - bun test
-#     - bun run build           (smoke test)
-#
-#   Mobile (apps/mobile — Flutter):
-#     - flutter analyze
-#     - flutter test
-#
-#   Cross-cutting:
-#     - actionlint              (workflow lint)
-#     - codespell               (typos)
-#     - SBOM generation per release artefact
+# Continuous integration — Rust matrix
 #
 # Pinning policy: all GitHub Actions are pinned to a full commit SHA with a
-# trailing version comment (e.g. `@<sha> # v1.2.3`); Dependabot keeps both the
-# SHA and the comment current.
+# trailing version comment (e.g. `@<sha> # v1.2.3`); Dependabot keeps both
+# the SHA and the comment current.
+#
+# Layout: two jobs in parallel — `lint` (fmt + clippy, no Postgres) and
+# `test` (cargo test + ADR-003 §E schema-drift check, with a Postgres 18
+# service). `lint` failures surface in well under a minute; `test` runs
+# concurrently rather than blocked behind it. Both share the same
+# Swatinem/rust-cache namespace so registry + target/ are warm after the
+# first run on a branch.
+#
+# Web (apps/web) and Mobile (apps/mobile) jobs land alongside those
+# subsystems. Cross-cutting checks (cargo deny / cargo audit / actionlint /
+# codespell) run via `scripts/check-all.sh` locally today; CI integration
+# lands when the install + caching plumbing is justified.
 
 name: CI
 
@@ -42,20 +27,105 @@ on:
 # Cancel superseded runs for the same ref. Saves minutes and avoids racing.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Least-privilege: this placeholder only reads the repo. Real jobs will
-# request additional scopes (e.g. `id-token: write` for OIDC, `packages:
-# write` for ghcr publishes) at the job level, not the workflow level.
+# Least-privilege at the workflow root. Individual jobs widen scopes when
+# needed (none do today; future ghcr publishes will require packages:write
+# at the job level, not the workflow level).
 permissions:
   contents: read
 
 jobs:
-  placeholder:
-    name: CI placeholder
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
+    # Defensive cap. fmt + clippy on this workspace runs in well under 5
+    # minutes; 15 minutes catches stuck networks/builds without burning the
+    # 6-hour default.
+    timeout-minutes: 15
+    env:
+      CARGO_TERM_COLOR: always
     steps:
-      - name: Announce
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Rust build cache
+        # Caches ~/.cargo/{registry,git} + target/ keyed on Cargo.lock +
+        # workspace fingerprint. PR caches scope to the PR's branch; they
+        # cannot poison main's cache (GitHub's documented cache scoping).
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: Show toolchain
         run: |
-          echo "CI placeholder — real jobs land alongside first feature commits."
-          echo "See .github/workflows/ci.yml header comment for the planned matrix."
+          rustc --version
+          cargo --version
+
+      - name: cargo fmt --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    # Tests bring up testcontainers (Postgres pull + start) and run the full
+    # suite. Currently completes well under 10 minutes; 30 is the defensive
+    # cap.
+    timeout-minutes: 30
+    # A real Postgres 18 service for the ADR-003 §E schema-drift check.
+    # Integration tests bring their own containers via testcontainers and
+    # ignore this one; it exists only for the `migrate + pg_dump + diff`
+    # step further down.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: flight_academy_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d flight_academy_dev"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Rust build cache
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+
+      - name: cargo test
+        # Tests use testcontainers; the runner already has Docker. The
+        # `services.postgres` container above is ignored here.
+        run: cargo test --workspace
+
+      - name: Apply migrations to the schema-diff fixture
+        env:
+          DATABASE_URL: postgres://postgres@localhost:5432/flight_academy_dev
+        run: cargo run --bin flight-academy --quiet -- migrate
+
+      - name: Schema-drift check (ADR-003 §E)
+        # pg_dump emits a per-invocation `\restrict <nonce>` line (psql
+        # meta-command-injection guard) and version-stamp comments; both
+        # change every run and are filtered out for determinism. Mirrors
+        # `scripts/regenerate-schema.sh`.
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          docker exec "$POSTGRES_CONTAINER" pg_dump \
+              --schema-only --no-owner --no-privileges \
+              -U postgres -d flight_academy_dev \
+            | grep -Ev '^\\(restrict|unrestrict) ' \
+            | grep -Ev '^-- Dumped (from database|by pg_dump) version' \
+            > /tmp/schema.actual.sql
+          diff -u crates/flight-academy-db/schema.sql /tmp/schema.actual.sql

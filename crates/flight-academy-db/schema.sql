@@ -7,6 +7,7 @@
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
 SELECT pg_catalog.set_config('search_path', '', false);
@@ -86,16 +87,16 @@ PARTITION BY RANGE (occurred_at);
 --
 
 CREATE TABLE public.audit_events_2026_06 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
-    actor_class text NOT NULL,
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
     actor_id uuid,
     tenant_id uuid,
-    chain_kind text NOT NULL,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
     chain_id uuid,
     prev_hash bytea,
-    payload jsonb NOT NULL,
-    payload_hash bytea NOT NULL,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
     CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
     CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
 );
@@ -106,16 +107,16 @@ CREATE TABLE public.audit_events_2026_06 (
 --
 
 CREATE TABLE public.audit_events_2026_07 (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
-    actor_class text NOT NULL,
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
     actor_id uuid,
     tenant_id uuid,
-    chain_kind text NOT NULL,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
     chain_id uuid,
     prev_hash bytea,
-    payload jsonb NOT NULL,
-    payload_hash bytea NOT NULL,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
     CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
     CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
 );
@@ -220,7 +221,7 @@ ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_0
 -- Name: audit_events audit_events_no_delete; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON public.audit_events FOR EACH ROW EXECUTE FUNCTION public.audit_events_immutable();
+CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON public.audit_events FOR EACH STATEMENT EXECUTE FUNCTION public.audit_events_immutable();
 
 
 --
@@ -234,7 +235,7 @@ CREATE TRIGGER audit_events_no_truncate BEFORE TRUNCATE ON public.audit_events F
 -- Name: audit_events audit_events_no_update; Type: TRIGGER; Schema: public; Owner: -
 --
 
-CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON public.audit_events FOR EACH ROW EXECUTE FUNCTION public.audit_events_immutable();
+CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON public.audit_events FOR EACH STATEMENT EXECUTE FUNCTION public.audit_events_immutable();
 
 
 --
