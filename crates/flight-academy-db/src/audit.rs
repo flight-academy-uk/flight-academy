@@ -92,7 +92,12 @@ impl Db {
     ///
     /// `actor_class` must be one of `"member"` / `"staff"` / `"system"`
     /// (the audit_events CHECK constraint). Invariant is enforced at the
-    /// DB layer; passing anything else surfaces as an Sqlx error.
+    /// DB layer; passing anything else surfaces as an Sqlx error. A
+    /// type-level guard (an `ActorClass` enum) would be more Rustic;
+    /// adding it requires moving `flight_academy_auth::ActorClass` to
+    /// `flight-academy-core` so this crate can depend on it without a
+    /// dependency cycle. Tracked for a follow-up PR; the DB CHECK is
+    /// the load-bearing defence until then.
     pub async fn write_tenant_audit_event(
         &self,
         actor_class: &'static str,
@@ -131,6 +136,25 @@ impl Db {
         unreachable!("retry loop must return inside the loop");
     }
 
+    /// # Pool-role invariant
+    ///
+    /// This method begins its transaction via `self.pool.begin()` — the
+    /// pool's session role directly, **not** `begin_tenant`. Two reasons:
+    ///
+    /// 1. The `prev_hash` SELECT must see all rows in the chain regardless
+    ///    of the `app.current_tenant` GUC (which `begin_tenant` would set
+    ///    via the `app_api` role + the RLS USING clause).
+    /// 2. There is no INSERT policy on `audit_events` for `app_api`
+    ///    today — an INSERT under that role would be denied.
+    ///
+    /// The audit writer therefore **requires** the pool's session role to
+    /// be RLS-bypassing (the default for the connecting role in our
+    /// development and current production paths). If the pool is ever
+    /// hardened to connect as a non-RLS-bypassing role, an INSERT + SELECT
+    /// policy for the audit chain writer must be added first — otherwise
+    /// the `prev_hash` lookup will silently return `None` and every row
+    /// will begin a new "first" entry, breaking chain integrity without
+    /// any error surface.
     async fn try_write_tenant_audit_event(
         &self,
         actor_class: &'static str,
@@ -165,6 +189,12 @@ impl Db {
         let occurred_at: OffsetDateTime = sqlx::query_scalar("SELECT now()")
             .fetch_one(&mut *tx)
             .await?;
+        // UUID v4 (random) here, deliberately not v7. The audit row's
+        // ordering key is `(occurred_at, id)` — the timestamp carries the
+        // ordering, `id` is the within-partition tiebreaker. Leaking a
+        // coarse insert timestamp into the id (as v7 does) would offer no
+        // benefit and would mildly weaken the unguessability property the
+        // verifier-side query relies on for partition-walk correctness.
         let row_id = Uuid::new_v4();
 
         // Canonical input. RFC 3339 with UTC offset for occurred_at — a
@@ -228,48 +258,52 @@ impl Db {
             prev_hash,
         })
     }
+}
 
-    /// Re-derive the `payload_hash` for a row from its persisted
-    /// constituent fields. Used by chain-integrity verifiers (tests today,
-    /// the periodic audit verifier per ADR-004 §H later) to detect rows
-    /// whose `payload` or `prev_hash` was tampered with after insert.
-    ///
-    /// Inputs must be exactly the values that were inserted; the caller
-    /// is responsible for SELECT-ing them with the same shape. The arity
-    /// matches the row's canonical-input shape exactly — clippy's
-    /// too-many-arguments lint argues for a struct, but the struct would
-    /// only be used at this call boundary and `CanonicalAuditRow` already
-    /// fills that role internally with the same fields.
-    #[allow(clippy::too_many_arguments)]
-    pub fn audit_payload_hash(
-        occurred_at: OffsetDateTime,
-        actor_class: &str,
-        actor_id: Option<Uuid>,
-        tenant_id: Option<Uuid>,
-        chain_kind: &str,
-        chain_id: Option<Uuid>,
-        payload: &serde_json::Value,
-        prev_hash: Option<&[u8]>,
-    ) -> Vec<u8> {
-        let occurred_at_str = occurred_at
-            .format(&time::format_description::well_known::Rfc3339)
-            .expect("OffsetDateTime always RFC 3339 formattable");
-        let row_input = CanonicalAuditRow {
-            occurred_at: occurred_at_str,
-            actor_class,
-            actor_id,
-            tenant_id,
-            chain_kind,
-            chain_id,
-            payload,
-        };
-        let canonical = serde_jcs::to_vec(&row_input)
-            .expect("CanonicalAuditRow has no non-finite floats; jcs encode is infallible");
-        let mut hasher = Sha256::new();
-        hasher.update(&canonical);
-        if let Some(p) = prev_hash {
-            hasher.update(p);
-        }
-        hasher.finalize().to_vec()
+/// Re-derive the `payload_hash` for a row from its persisted constituent
+/// fields. Used by chain-integrity verifiers (tests today, the periodic
+/// audit verifier per ADR-004 §H later) to detect rows whose `payload` or
+/// `prev_hash` was tampered with after insert.
+///
+/// Free function rather than `Db::` associated function — the operation
+/// is pure compute with no database interaction; placing it on `Db` would
+/// mislead a reader into expecting a DB round-trip.
+///
+/// Inputs must be exactly the values that were inserted; the caller is
+/// responsible for SELECT-ing them with the same shape. The arity matches
+/// the row's canonical-input shape exactly — clippy's too-many-arguments
+/// lint argues for a struct, but the struct would only be used at this
+/// call boundary and `CanonicalAuditRow` already fills that role
+/// internally with the same fields.
+#[allow(clippy::too_many_arguments)]
+pub fn payload_hash(
+    occurred_at: OffsetDateTime,
+    actor_class: &str,
+    actor_id: Option<Uuid>,
+    tenant_id: Option<Uuid>,
+    chain_kind: &str,
+    chain_id: Option<Uuid>,
+    payload: &serde_json::Value,
+    prev_hash: Option<&[u8]>,
+) -> Vec<u8> {
+    let occurred_at_str = occurred_at
+        .format(&time::format_description::well_known::Rfc3339)
+        .expect("OffsetDateTime always RFC 3339 formattable");
+    let row_input = CanonicalAuditRow {
+        occurred_at: occurred_at_str,
+        actor_class,
+        actor_id,
+        tenant_id,
+        chain_kind,
+        chain_id,
+        payload,
+    };
+    let canonical = serde_jcs::to_vec(&row_input)
+        .expect("CanonicalAuditRow has no non-finite floats; jcs encode is infallible");
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    if let Some(p) = prev_hash {
+        hasher.update(p);
     }
+    hasher.finalize().to_vec()
 }

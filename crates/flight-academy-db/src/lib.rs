@@ -7,7 +7,7 @@
 //! (ADR-003 §C — the same binary serves the hosted K8s Job and the
 //! self-host install script per ADR-002 §F / §I).
 
-mod audit;
+pub mod audit;
 mod error;
 mod tenants;
 

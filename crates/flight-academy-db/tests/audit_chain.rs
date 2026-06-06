@@ -1,7 +1,6 @@
 //! Verifies the audit chain writer produces correctly-linked rows and
 //! that a tampered row is detected by re-deriving its hash.
 
-use flight_academy_db::Db;
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;
 use uuid::Uuid;
@@ -69,7 +68,7 @@ async fn rederiving_payload_hash_matches_stored_value() {
 
     // Re-derive the payload_hash from the persisted constituent fields.
     // Mirrors the path the periodic verifier will take per ADR-004 §H.
-    let derived = Db::audit_payload_hash(
+    let derived = flight_academy_db::audit::payload_hash(
         written.occurred_at,
         "member",
         Some(actor),
@@ -101,7 +100,7 @@ async fn tampered_payload_fails_rederivation() {
     // row was written. The persisted payload_hash and prev_hash stay the
     // same; only the payload changes.
     let tampered = serde_json::json!({"action": "create", "id": 2});
-    let derived_with_tampered = Db::audit_payload_hash(
+    let derived_with_tampered = flight_academy_db::audit::payload_hash(
         written.occurred_at,
         "member",
         Some(actor),
@@ -176,4 +175,47 @@ async fn writer_inserts_row_visible_via_select() {
         .unwrap();
     let stored: Vec<u8> = row.try_get("payload_hash").unwrap();
     assert_eq!(stored, written.payload_hash);
+}
+
+#[tokio::test]
+async fn invalid_actor_class_is_rejected_by_check_constraint() {
+    // Backstop for the runtime-only enforcement of `actor_class`. The
+    // writer takes `&'static str` (see audit::write_tenant_audit_event)
+    // and the DB CHECK is the load-bearing defence until ActorClass
+    // moves to flight-academy-core; this test makes sure that defence
+    // stays loaded.
+    let db = fresh_db().await;
+    let tenant = seed_tenant(&db, "check-test", "Check Test", "ato").await;
+
+    let err = db
+        .write_tenant_audit_event(
+            "admin",
+            Some(Uuid::new_v4()),
+            tenant.id,
+            serde_json::json!({}),
+        )
+        .await
+        .expect_err("admin is not in the actor_class CHECK whitelist");
+
+    // SQLSTATE 23514 is `check_violation`.
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("check") || msg.contains("23514") || msg.contains("constraint"),
+        "expected a CHECK violation, got: {msg}"
+    );
+}
+
+#[test]
+fn rfc3339_formatter_byte_stable() {
+    // Canary against silent `time` crate behaviour drift. The audit
+    // chain's hash covers the RFC 3339 byte representation of
+    // `occurred_at`; if `time` ever changes the format (trailing zeros,
+    // fractional-second width, offset sigil, etc.) without us noticing,
+    // every freshly-written chain would diverge from every chain written
+    // before. This pins one known good output as a regression backstop.
+    use time::OffsetDateTime;
+    use time::format_description::well_known::Rfc3339;
+
+    let dt = OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap();
+    assert_eq!(dt.format(&Rfc3339).unwrap(), "2023-11-14T22:13:20Z");
 }
