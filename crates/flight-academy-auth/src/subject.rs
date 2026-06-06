@@ -22,12 +22,28 @@ pub enum ActorClass {
     System,
 }
 
-/// Stub. Real membership/staff role taxonomy lands with passwordless auth
-/// and the staff-plane work.
+/// Membership / staff role taxonomy. Grows as endpoints land. Today's
+/// set:
+///
+/// * `TenantAdmin` — a member with management rights over their own
+///   tenant (rename, update settings, soft-delete). Granted by another
+///   tenant-admin (bootstrap by Staff per the staff-plane work to come).
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Role {
-    /// Placeholder kept so `BTreeSet<Role>` typechecks today.
-    Reserved,
+    TenantAdmin,
+}
+
+impl Role {
+    /// Parse a role from its config-file string form. Returns `None` for
+    /// unknown values; callers (dev_auth, future session decoders)
+    /// silently drop unknowns so a config file ahead of the binary's
+    /// known set degrades safely rather than failing open.
+    pub fn from_str_known(s: &str) -> Option<Self> {
+        match s {
+            "tenant-admin" | "tenant_admin" => Some(Self::TenantAdmin),
+            _ => None,
+        }
+    }
 }
 
 /// Stub. Real subject attributes (medical class, ratings, instructor

@@ -23,7 +23,7 @@ use axum::{
     middleware::Next,
     response::Response,
 };
-use flight_academy_auth::{ActorClass, Subject, SubjectAttributes};
+use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
 use flight_academy_core::Error;
 use tower_http::request_id::{MakeRequestId, RequestId};
 use uuid::Uuid;
@@ -68,11 +68,21 @@ pub async fn dev_auth(mut req: Request, next: Next) -> Result<Response, ApiError
         .and_then(|s| Uuid::parse_str(&s).ok())
         .ok_or(ApiError::from(Error::Unauthorized))?;
 
+    // Roles are comma-separated in `FA_DEV_ROLES` (e.g. `tenant-admin`).
+    // Unknown role strings are silently dropped so a config ahead of the
+    // binary's known set degrades safely. Empty env var → no roles
+    // (subject is a plain member).
+    let roles: BTreeSet<Role> = std::env::var("FA_DEV_ROLES")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|s| Role::from_str_known(s.trim()))
+        .collect();
+
     let subject = Subject {
         user_id,
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
-        roles: BTreeSet::new(),
+        roles,
         attributes: SubjectAttributes,
         elevation: None,
     };

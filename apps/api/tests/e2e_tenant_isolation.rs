@@ -11,10 +11,10 @@
 use axum::{
     Extension,
     body::Body,
-    http::{Request, StatusCode},
+    http::{Request, StatusCode, header},
 };
 use flight_academy_test_support::{
-    fresh_db, member_subject, seed_tenant, seed_tenant_audit_events,
+    fresh_db, member_subject, seed_tenant, seed_tenant_audit_events, tenant_admin_subject,
 };
 use http_body_util::BodyExt;
 use tower::ServiceExt;
@@ -138,6 +138,263 @@ async fn tenant_get_unknown_slug_is_not_found() {
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn tenant_patch_admin_updates_name() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    let subject = tenant_admin_subject(alpha.id);
+    let user_id = subject.user_id;
+
+    let body = serde_json::json!({ "name": "Alpha Renamed" });
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    req.extensions_mut().insert(subject);
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["name"], "Alpha Renamed");
+    assert_eq!(v["slug"], "alpha-academy");
+
+    // Audit event recorded — exactly one row for this tenant chain.
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events
+          WHERE chain_kind = 'tenant' AND chain_id = $1
+            AND actor_id = $2",
+    )
+    .bind(alpha.id)
+    .bind(user_id)
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "exactly one audit event for the rename");
+}
+
+#[tokio::test]
+async fn tenant_patch_noop_does_not_audit() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from("{}"))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events WHERE chain_kind = 'tenant' AND chain_id = $1",
+    )
+    .bind(alpha.id)
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(count, 0, "no-op PATCH should not audit");
+}
+
+#[tokio::test]
+async fn tenant_patch_non_admin_is_forbidden() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"x"}"#))
+        .unwrap();
+    // Plain member, not tenant-admin.
+    req.extensions_mut().insert(member_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn tenant_patch_cross_tenant_is_forbidden() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    // Subject is tenant-admin of alpha but patching bravo.
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/bravo-flight")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"hijack"}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn tenant_patch_invalid_name_is_bad_request() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    // Empty name fails the 1..=200 length check at the handler boundary.
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":""}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn tenant_delete_admin_soft_deletes_and_audits() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    let mut req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"deletion_reason":"requested_by_tenant"}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NO_CONTENT);
+
+    // Row is soft-deleted (deleted_at IS NOT NULL), not removed. The
+    // WHERE clause also asserts the soft-delete happened — if it didn't
+    // fetch_one would return RowNotFound.
+    let deletion_reason: Option<String> = sqlx::query_scalar(
+        "SELECT deletion_reason FROM tenants
+          WHERE id = $1 AND deleted_at IS NOT NULL",
+    )
+    .bind(alpha.id)
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(deletion_reason.as_deref(), Some("requested_by_tenant"));
+
+    // Slug is no longer resolvable.
+    assert!(db.tenant_by_slug("alpha-academy").await.unwrap().is_none());
+
+    // Audit recorded.
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM audit_events WHERE chain_kind = 'tenant' AND chain_id = $1",
+    )
+    .bind(alpha.id)
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(count, 1, "exactly one audit event for the deletion");
+}
+
+#[tokio::test]
+async fn tenant_delete_missing_reason_is_bad_request() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    let mut req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"deletion_reason":"   "}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn tenant_delete_oversized_reason_is_bad_request() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    // 1001-char string exceeds the 1000-char cap.
+    let oversized = "x".repeat(1001);
+    let body = serde_json::json!({ "deletion_reason": oversized });
+    let mut req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn tenant_patch_on_soft_deleted_tenant_is_not_found() {
+    // Contract test: PATCH on a soft-deleted tenant returns 404, not 500.
+    // The slug-lookup path covers the obvious case (`resolve_tenant`
+    // filters `deleted_at IS NULL`). The narrower race where the delete
+    // wins *between* slug-lookup and the UPDATE is protected by
+    // `try_tenant_patch_once`'s `fetch_optional` + `Option<None>` arm —
+    // not directly exercised here (would need coordinated two-task
+    // sequencing), but the end-state contract is the same.
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    sqlx::query("UPDATE tenants SET deleted_at = now(), deletion_reason = 'test' WHERE id = $1")
+        .bind(alpha.id)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"x"}"#))
+        .unwrap();
+    req.extensions_mut().insert(tenant_admin_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn tenant_delete_non_admin_is_forbidden() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    let mut req = Request::builder()
+        .method("DELETE")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"deletion_reason":"requested_by_tenant"}"#))
+        .unwrap();
+    req.extensions_mut().insert(member_subject(alpha.id));
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
