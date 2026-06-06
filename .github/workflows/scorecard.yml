@@ -18,6 +18,13 @@ on:
   push:
     branches: ["main"]
 
+# Coalesce overlapping runs on the same ref (e.g. a push lands during a
+# weekly schedule). Runs on main are never cancelled mid-flight — Scorecard
+# publishes badge/SARIF results that downstream tools consume.
+concurrency:
+  group: scorecard-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 # Least privilege by default; the analysis job widens only the two scopes it needs.
 permissions: read-all
 
@@ -25,6 +32,10 @@ jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
+    # Defensive cap. Analysis typically runs in 2-5 minutes; 30 catches a
+    # stuck checkout, network, or scorecard internal hang without burning
+    # the 6-hour default.
+    timeout-minutes: 30
     permissions:
       security-events: write # upload SARIF to the code-scanning dashboard
       id-token: write # publish results to the Scorecard API (OIDC) for the badge

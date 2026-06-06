@@ -12,3 +12,7 @@ CONTRIBUTING.md:personal-tilde-dotfile-path:43
 # deny.toml L27 — cargo-deny's `db-path = "~/.cargo/advisory-db"`. The
 # cargo-deny convention for locating the local RustSec advisory DB.
 deny.toml:personal-tilde-dotfile-path:27
+
+# .github/workflows/ci.yml L55 — comment documenting Swatinem/rust-cache's
+# scope: caches `~/.cargo/{registry,git}` + `target/`. Standard Rust path.
+.github/workflows/ci.yml:personal-tilde-dotfile-path:55

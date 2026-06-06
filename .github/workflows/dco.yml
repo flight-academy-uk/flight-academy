@@ -42,6 +42,10 @@ jobs:
   dco-check:
     name: Verify Signed-off-by on every commit
     runs-on: ubuntu-latest
+    # Defensive cap. The check itself is a few git commands and concludes in
+    # seconds; 10 minutes catches a stuck checkout/network without burning the
+    # 6-hour default.
+    timeout-minutes: 10
     # Dependabot is exempt from DCO: it cannot add a Signed-off-by trailer, and a
     # dependency bump is mechanical, not a copyrightable contribution. The
     # exemption is applied per-step (below) rather than skipping the whole job, so
@@ -57,6 +61,8 @@ jobs:
           # Fetch enough history to see every commit on the PR.
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
+          # The workflow only reads commit metadata; no git push back to origin.
+          persist-credentials: false
 
       - name: Verify DCO sign-off
         if: github.event.pull_request.user.login != 'dependabot[bot]'
