@@ -2,7 +2,7 @@
 
 Open-source platform for UK aviation — flight schools, maintenance organisations, airfields.
 
-> **Status:** pre-alpha. Architectural decisions are landing now; first feature commits will follow.
+> **Status:** pre-alpha. ADRs accepted; the walking skeleton, first tenant-scoped read/write API, hash-chained audit trail, baseline security headers, and the web design system have shipped to `main`. First end-user-facing feature lands when passwordless auth is wired.
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/flight-academy-uk/flight-academy/badge)](https://scorecard.dev/viewer/?uri=github.com/flight-academy-uk/flight-academy)
@@ -56,23 +56,33 @@ Flight Academy contains no telemetry. No phone-home, no usage analytics, no erro
 
 | Component | State |
 | --- | --- |
-| Architectural decision records | landing |
-| Backend API (Rust, Axum) | not started |
-| Web (SvelteKit) | not started |
+| Architectural decision records | accepted (ADR-001 through ADR-018) |
+| Backend API (Rust, Axum) | in active development — HTTP foundation, ABAC primitives, hash-chained audit trail, tenants resource (read + write) |
+| Web (SvelteKit) | in active development — skeleton (Bun workspace, adapter-static, Tailwind v4), design tokens with drift-check, base styles + IBM Plex, first-class dark mode |
 | Mobile (Flutter) | not started |
 | Helm chart for K8s self-host | not started |
 | `docker-compose.yaml` for single-host self-host | not started |
 
-A public roadmap will be published once we have one worth sharing. Until then, the [`docs/architecture/`](docs/architecture/) Architecture Decision Records are the most reliable indicator of direction.
+A public roadmap will be published once we have one worth sharing. Until then, the [`docs/architecture/`](docs/architecture/) Architecture Decision Records are the most reliable indicator of direction, and the [CHANGELOG](CHANGELOG.md) catalogues what has actually landed.
 
 ## Quick start (development)
 
-Once the first feature commits land:
+What currently works locally — a unified dev orchestration command will land later:
 
 ```bash
 git clone https://github.com/flight-academy-uk/flight-academy
 cd flight-academy
-just dev
+
+# Rust API: build, lint, test (Postgres testcontainers run from cargo test)
+cargo build --workspace
+cargo test --workspace
+
+# Web: install workspace deps, type-check, build
+bun install
+cd apps/web && bun run check && bun run build
+
+# Pre-push hygiene gate (mirrors CI: lint, audit, deny, gitleaks, ...)
+scripts/check-all.sh
 ```
 
 Full setup guide will be at [docs/development/setup.md](docs/development/setup.md).
