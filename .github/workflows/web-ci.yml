@@ -62,13 +62,17 @@ jobs:
         # version) and `bun install` is fast when the global cache is
         # warm, so this is the right granularity.
         #
-        # $HOME is the runner's home (e.g. /home/runner on
-        # ubuntu-latest); using $HOME rather than `~` keeps the path
-        # explicit and avoids tripping personal-path scanners
-        # configured to flag user dotfiles in committed files.
+        # `${{ env.HOME }}` is the GitHub Actions expression form for
+        # the runner's home dir (e.g. /home/runner on ubuntu-latest).
+        # actions/cache processes `${{ }}` expressions in `path:` but
+        # does not perform shell variable expansion, so bare `$HOME`
+        # can silently no-op — see github.com/actions/cache docs.
+        # The expression form also keeps the path explicit and avoids
+        # tripping personal-path scanners configured to flag user
+        # tilde-prefixed dotfile paths in committed files.
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          path: $HOME/.bun/install/cache
+          path: ${{ env.HOME }}/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: |
             bun-install-${{ runner.os }}-
