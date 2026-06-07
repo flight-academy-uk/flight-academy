@@ -1,4 +1,6 @@
-/* Tailwind v4 entry. Theme tokens land via @theme in C2 (alongside
-   the design-token JSON → CSS custom property pipeline per ADR-014 §C);
-   the v1 system.css ports near-verbatim alongside that work. */
+/* Design tokens (ADR-014 §C) loaded first so the CSS custom properties
+   they define are available to any Tailwind utility or v1 system.css
+   port that lands later. tokens.css is generated from tokens.json by
+   apps/web-ui/scripts/emit-tokens-css.ts; do not edit by hand. */
+@import '@flight-academy/web-ui/tokens/tokens.css';
 @import 'tailwindcss';

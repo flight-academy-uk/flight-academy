@@ -9,8 +9,9 @@
     "bun": ">=1.3.0"
   },
   "scripts": {
-    "format": "prettier --write apps/web",
-    "format:check": "prettier --check apps/web"
+    "format": "prettier --write apps/web apps/web-ui",
+    "format:check": "prettier --check apps/web apps/web-ui",
+    "emit-tokens": "bun apps/web-ui/scripts/emit-tokens-css.ts"
   },
   "devDependencies": {
     "prettier": "^3.8.3",
