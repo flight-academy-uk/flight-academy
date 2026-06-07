@@ -1,0 +1,151 @@
+/* Flight Academy base styles — typography, dark mode, utility classes.
+ *
+ * Loaded after tokens.css (ADR-014 §C) so the CSS custom properties are
+ * available. The body / utility classes use `var(--…)` exclusively so
+ * tenant brand overrides (white-label runtime, ADR-014 §F) shadow the
+ * tokens.css fallbacks without these styles needing to know.
+ *
+ * Self-hosted IBM Plex Sans + Mono per ADR-014 §F (no third-party font
+ * origins; ADR-015's CSP forbids them). @fontsource emits @font-face
+ * declarations pointing at woff2 files bundled by Vite — the build
+ * fingerprints them so cache invalidation is automatic.
+ *
+ * Class naming: `flight-academy-*` (verbose source for clarity;
+ * future build-time minimisation can rename for production payloads).
+ * The `.fa-*` prefix would collide with Font Awesome's namespace and
+ * is deliberately avoided.
+ */
+
+/* ----- Self-hosted fonts ----------------------------------------------------
+ * Subsetted to Latin + Latin Extended only. The base import (e.g.
+ * `ibm-plex-sans/400.css`) pulls in every subset @fontsource ships
+ * (Cyrillic, Greek, Vietnamese, Latin Ext, Latin) — ~70 woff2 files per
+ * font, most never used. Aviation regulator surface targets EASA / UK
+ * CAA today; the Latin subsets cover English plus Western and Central
+ * European diacritics. Adding scripts is a future deliberate choice
+ * tied to tenant region — not a default.
+ */
+
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-sans/latin-700.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-400.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-500.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-600.css';
+@import '@fontsource/ibm-plex-sans/latin-ext-700.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/ibm-plex-mono/latin-ext-400.css';
+@import '@fontsource/ibm-plex-mono/latin-ext-500.css';
+
+/* ----- Dark mode -----------------------------------------------------------
+ * Both activation paths are first-class:
+ *   1. `<html>` defaults to `color-scheme: light dark` — the browser picks
+ *      light vs dark from the user's OS preference.
+ *   2. `<html data-theme="dark">` / `data-theme="light"` set `color-scheme`
+ *      explicitly, overriding the OS preference.
+ *
+ * Each tenant-neutral token is then defined ONCE using CSS Color L5's
+ * `light-dark(light-value, dark-value)`, which resolves against the
+ * element's effective `color-scheme`. The dark values mirror v1
+ * system.css's `.dark` block — only the neutral surfaces, ink, and
+ * borders shift; brand and status colours stay stable across modes
+ * (deliberate v1 decision).
+ *
+ * tokens.css ships flat light values so the page is still usable on
+ * browsers that predate `light-dark()` (Chrome <123, Firefox <120,
+ * Safari <17.5). For supported browsers, this block overrides each
+ * token with the light-dark resolved value.
+ */
+
+html {
+  color-scheme: light dark;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root {
+  --color-bg: light-dark(oklch(0.985 0.003 250), oklch(0.18 0.015 260));
+  --color-surface: light-dark(oklch(1 0 0), oklch(0.22 0.015 260));
+  --color-surface-2: light-dark(oklch(0.975 0.005 250), oklch(0.25 0.018 260));
+  --color-surface-3: light-dark(oklch(0.955 0.006 250), oklch(0.28 0.018 260));
+  --color-ink: light-dark(oklch(0.22 0.018 260), oklch(0.97 0.003 260));
+  --color-ink-2: light-dark(oklch(0.45 0.015 260), oklch(0.75 0.008 260));
+  --color-ink-3: light-dark(oklch(0.62 0.012 260), oklch(0.55 0.01 260));
+  --color-border: light-dark(oklch(0.92 0.007 260), oklch(0.3 0.015 260));
+  --color-border-strong: light-dark(oklch(0.85 0.008 260), oklch(0.4 0.018 260));
+}
+
+/* ----- Body ---------------------------------------------------------------
+ * Sizes use `rem` so the design scale honours the user's browser/OS root
+ * font-size preference (accessibility — meaningfully larger or smaller
+ * than 16px). The relationships between sizes are preserved via the rem
+ * ratios that came from v1 system.css's px values: 14/16 = 0.875rem, etc.
+ */
+
+body {
+  font-family:
+    'IBM Plex Sans',
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
+  font-size: 0.875rem; /* 14px @ default 16px root */
+  line-height: 1.4;
+  letter-spacing: -0.005em;
+  color: var(--color-ink);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ----- Typography utilities ------------------------------------------------ */
+
+.flight-academy-h1 {
+  font-size: 1.75rem; /* 28px */
+  font-weight: 600;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+}
+
+.flight-academy-h2 {
+  font-size: 1.25rem; /* 20px */
+  font-weight: 600;
+  letter-spacing: -0.018em;
+  line-height: 1.2;
+}
+
+.flight-academy-h3 {
+  font-size: 1rem; /* 16px */
+  font-weight: 600;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+}
+
+.flight-academy-label {
+  font-size: 0.6875rem; /* 11px */
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+.flight-academy-small {
+  font-size: 0.75rem; /* 12px */
+  color: var(--color-ink-2);
+}
+
+.flight-academy-muted {
+  color: var(--color-ink-2);
+}
+
+.flight-academy-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-feature-settings: 'tnum' 1;
+}

@@ -1,6 +1,27 @@
 /* Design tokens (ADR-014 §C) loaded first so the CSS custom properties
-   they define are available to any Tailwind utility or v1 system.css
-   port that lands later. tokens.css is generated from tokens.json by
+   they define are available to base.css's body / typography rules and
+   to any Tailwind utility. tokens.css is generated from tokens.json by
    apps/web-ui/scripts/emit-tokens-css.ts; do not edit by hand. */
 @import '@flight-academy/web-ui/tokens/tokens.css';
+
+/* Base styles — typography, dark-mode token overrides, IBM Plex fonts,
+   `flight-academy-*` utility classes. See apps/web-ui/styles/base.css. */
+@import '@flight-academy/web-ui/styles/base.css';
+
 @import 'tailwindcss';
+
+/* Make Tailwind's `dark:` variant follow the same activation paths as
+   our token override block in base.css — explicit `data-theme="dark"`
+   override OR `prefers-color-scheme: dark` when no explicit choice is
+   set. Without this, `dark:bg-…` utilities and our `:root[data-theme]`
+   token overrides would disagree on when "dark" is in effect. */
+@custom-variant dark {
+  &:where([data-theme='dark'], [data-theme='dark'] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme='light'], [data-theme='light'] *)) {
+      @slot;
+    }
+  }
+}
