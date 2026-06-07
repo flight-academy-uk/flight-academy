@@ -24,6 +24,8 @@ on:
       - 'apps/web-ui/**'
       - 'package.json'
       - 'bun.lock'
+      - '.prettierrc'
+      - '.prettierignore'
       - '.github/workflows/web-ci.yml'
 
 concurrency:
@@ -89,6 +91,18 @@ jobs:
         # Same role as `cargo fmt --check` on the Rust side — catches
         # style drift before it lands.
         run: bun run format:check
+
+      - name: Design tokens drift check
+        # apps/web-ui/tokens/tokens.css is regenerated from
+        # apps/web-ui/tokens/tokens.json. The committed CSS must match
+        # what the emitter would produce — otherwise a tokens.json
+        # change without re-running `bun run emit-tokens` would ship a
+        # stale CSS. Same regression-tested-floor pattern as the
+        # OpenAPI / DB-schema drift checks on the Rust side (ADR-006
+        # §A / ADR-003 §E).
+        run: |
+          bun run emit-tokens
+          git diff --exit-code apps/web-ui/tokens/tokens.css
 
       - name: Dependency audit
         # `--audit-level=moderate` so a transitive `low` advisory does

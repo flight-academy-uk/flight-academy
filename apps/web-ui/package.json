@@ -1,0 +1,16 @@
+{
+  "name": "@flight-academy/web-ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared SvelteKit primitives + design tokens (ADR-014 §B). Consumed by apps/web and (later) apps/admin-web. Tokens are the web↔mobile bridge per ADR-014 §C — apps/mobile reads the emitted tokens.dart but not the Svelte primitives.",
+  "scripts": {
+    "emit-tokens": "bun scripts/emit-tokens-css.ts"
+  },
+  "exports": {
+    "./tokens/tokens.css": "./tokens/tokens.css"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2"
+  }
+}

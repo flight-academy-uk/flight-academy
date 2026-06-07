@@ -1,0 +1,55 @@
+/* ============================================================================
+ * GENERATED FILE — DO NOT EDIT
+ * ============================================================================
+ *
+ * Source of truth:  apps/web-ui/tokens/tokens.json
+ * Emitter:          apps/web-ui/scripts/emit-tokens-css.ts
+ * Regenerate:       bun run emit-tokens
+ * Contract:         ADR-014 §C
+ *
+ * CI's tokens-drift step fails if this file diverges from what the emitter
+ * produces from the current tokens.json. Hand-edits will be reverted on the
+ * next emitter run; edit tokens.json instead.
+ * ============================================================================
+ */
+
+
+:root {
+  /* color */
+  --color-brand: oklch(0.42 0.16 265);
+  --color-brand-2: oklch(0.55 0.18 265);
+  --color-brand-soft: oklch(0.95 0.04 265);
+  --color-brand-ink: oklch(0.99 0 0);
+  --color-bg: oklch(0.985 0.003 250);
+  --color-surface: oklch(1 0 0);
+  --color-surface-2: oklch(0.975 0.005 250);
+  --color-surface-3: oklch(0.955 0.006 250);
+  --color-ink: oklch(0.22 0.018 260);
+  --color-ink-2: oklch(0.45 0.015 260);
+  --color-ink-3: oklch(0.62 0.012 260);
+  --color-border: oklch(0.92 0.007 260);
+  --color-border-strong: oklch(0.85 0.008 260);
+
+  /* status */
+  --status-ok: oklch(0.56 0.13 150);
+  --status-ok-soft: oklch(0.94 0.04 150);
+  --status-warn: oklch(0.7 0.16 75);
+  --status-warn-soft: oklch(0.95 0.06 80);
+  --status-blocked: oklch(0.58 0.18 28);
+  --status-blocked-soft: oklch(0.95 0.05 28);
+  --status-offline: oklch(0.62 0.01 260);
+  --status-offline-soft: oklch(0.94 0.005 260);
+  --status-info: oklch(0.55 0.13 230);
+  --status-info-soft: oklch(0.94 0.04 230);
+
+  /* r */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 18px;
+
+  /* shadow */
+  --shadow-1: 0 1px 2px rgba(20, 25, 40, 0.04), 0 0 0 1px rgba(20, 25, 40, 0.05);
+  --shadow-2: 0 2px 8px rgba(20, 25, 40, 0.06), 0 0 0 1px rgba(20, 25, 40, 0.05);
+  --shadow-3: 0 12px 30px rgba(20, 25, 40, 0.1), 0 0 0 1px rgba(20, 25, 40, 0.06);
+}

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://flight-academy.app/schemas/design-tokens.json",
+  "title": "Flight Academy design tokens",
+  "description": "Source-of-truth schema for apps/web-ui/tokens/tokens.json per ADR-014 §C. Top-level keys are token categories (kebab-case ASCII); the values inside each category are token definitions with a required `value` and an optional `tenantOverride` flag. The schema is hand-curated rather than generated so that `$schema` references in tokens.json give IDE autocomplete + on-save validation without a build step.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Pointer to this schema. Lets editors validate the file as you type."
+    },
+    "$comment": {
+      "type": "string",
+      "description": "Free-form note for human readers. Ignored by the emitter."
+    }
+  },
+  "patternProperties": {
+    "^[a-z][a-z0-9-]*$": {
+      "type": "object",
+      "description": "A token category. Becomes the prefix of every emitted CSS custom property (e.g. `color` → `--color-...`).",
+      "patternProperties": {
+        "^[a-z0-9][a-z0-9-]*$": {
+          "$ref": "#/$defs/tokenDef"
+        }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "tokenDef": {
+      "type": "object",
+      "description": "A single design token. `value` is the literal CSS value the emitter writes; `tenantOverride: true` marks tokens that runtime tenant settings may replace per ADR-014 §F (the emitter still writes the fallback to tokens.css; the runtime overrides at boot).",
+      "properties": {
+        "value": {
+          "type": "string",
+          "minLength": 1,
+          "description": "CSS value as it will appear in tokens.css. Examples: `oklch(0.42 0.16 265)`, `4px`, `0 2px 8px rgba(20, 25, 40, 0.06)`."
+        },
+        "tenantOverride": {
+          "type": "boolean",
+          "description": "True if this token is part of the white-label override surface. The emitter ignores this flag; the runtime layer reads it."
+        }
+      },
+      "required": ["value"],
+      "additionalProperties": false
+    }
+  }
+}

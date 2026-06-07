@@ -28,3 +28,4 @@ CODE_OF_ETHICS.md
 
 # Generated artefacts
 **/*.generated.*
+apps/web-ui/tokens/tokens.css
