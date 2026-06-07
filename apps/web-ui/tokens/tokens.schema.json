@@ -20,7 +20,8 @@
       "description": "A token category. Becomes the prefix of every emitted CSS custom property (e.g. `color` → `--color-...`).",
       "patternProperties": {
         "^[a-z0-9][a-z0-9-]*$": {
-          "$ref": "#/$defs/tokenDef"
+          "$ref": "#/$defs/tokenDef",
+          "description": "Intentionally permits purely numeric keys: the `shadow` category uses `1`/`2`/`3` so the emitted CSS custom properties read as `--shadow-1`. Categories whose elevation order is semantic (rather than named) use this shape."
         }
       },
       "additionalProperties": false,

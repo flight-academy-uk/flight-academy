@@ -57,12 +57,29 @@ const HEADER = [
 
 const lines: string[] = [HEADER, ':root {'];
 
+// Reject values whose content would break the surrounding `:root { … }`
+// block. tokens.json is committed source today and reviewed via PR, so
+// this is a typo-and-future-proofing guard rather than a security
+// boundary — a `}` would end the declaration block early; a `;` belongs
+// to the emitter, not the value. Real CSS values (oklch(), shadow
+// triplets) use commas and parentheses, never these chars at the top
+// level. Crash loud so the offender is caught at emit-time instead of
+// at runtime cascade.
+function assertValueShape(category: string, key: string, value: string): void {
+  if (value.includes('}') || value.includes(';')) {
+    throw new Error(
+      `Token value for ${category}.${key} contains an illegal CSS structural character (\`}\` or \`;\`): ${value}`,
+    );
+  }
+}
+
 for (const [category, items] of Object.entries(tokens)) {
   if (category.startsWith('$') || typeof items !== 'object' || items === null) {
     continue;
   }
   lines.push(`  /* ${category} */`);
   for (const [key, def] of Object.entries(items)) {
+    assertValueShape(category, key, def.value);
     lines.push(`  --${category}-${key}: ${def.value};`);
   }
   lines.push('');
