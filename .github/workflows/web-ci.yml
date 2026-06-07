@@ -1,0 +1,108 @@
+# CI — apps/web (SvelteKit)
+#
+# Separate workflow file from ci.yml so the web build iterates
+# independently: different cache namespace, different concurrency
+# group, different action set (Bun + SvelteKit vs cargo). Pinning
+# policy identical — SHA-pinned actions with a version comment;
+# Dependabot keeps both current.
+#
+# Path filter is on `pull_request` only; pushes to main always run
+# (a merged web-touching PR plus a non-web follow-up should both
+# leave main green). The filter includes the shared workspace package
+# slot at apps/web-ui/ which lands in C2; declaring it now means the
+# workflow keeps doing the right thing when the package arrives.
+
+name: Web CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - 'apps/web-ui/**'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/web-ci.yml'
+
+concurrency:
+  group: web-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Web Build
+    runs-on: ubuntu-latest
+    # SvelteKit + Tailwind v4 builds run in under 2 minutes on a clean
+    # cache. 15 minutes catches stuck networks/builds without burning
+    # the 6-hour default.
+    timeout-minutes: 15
+    steps:
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.3.1'
+
+      - name: Cache Bun install
+        # Caches Bun's global install cache (the tarballs Bun downloads
+        # during `bun install`). Keyed on bun.lock so the cache is
+        # rebuilt whenever the lockfile changes; restore-keys gives a
+        # partial hit when only a few packages bump. We deliberately
+        # don't cache `node_modules` directly — keying that on bun.lock
+        # is fragile (Bun's install graph also depends on the runtime
+        # version) and `bun install` is fast when the global cache is
+        # warm, so this is the right granularity.
+        #
+        # `${{ env.HOME }}` is the GitHub Actions expression form for
+        # the runner's home dir (e.g. /home/runner on ubuntu-latest).
+        # actions/cache processes `${{ }}` expressions in `path:` but
+        # does not perform shell variable expansion, so bare `$HOME`
+        # can silently no-op — see github.com/actions/cache docs.
+        # The expression form also keeps the path explicit and avoids
+        # tripping personal-path scanners configured to flag user
+        # tilde-prefixed dotfile paths in committed files.
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.HOME }}/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install dependencies
+        # --frozen-lockfile fails the build if bun.lock and package.json
+        # disagree, surfacing dependency drift loud and early rather
+        # than letting CI silently resolve a different tree than the
+        # contributor's local install.
+        run: bun install --frozen-lockfile
+
+      - name: Format check (prettier)
+        # Run from root so the root .prettierrc + .prettierignore apply.
+        # Same role as `cargo fmt --check` on the Rust side — catches
+        # style drift before it lands.
+        run: bun run format:check
+
+      - name: Dependency audit
+        # `--audit-level=moderate` so a transitive `low` advisory does
+        # not gate the build on something we cannot directly fix
+        # (e.g. cookie <0.7.0 currently surfaces from @sveltejs/kit's
+        # internal use; SvelteKit upstream owns the bump). Moderate and
+        # above remain blocking. Low advisories still print and are
+        # surfaced in the CI log.
+        run: bun audit --audit-level=moderate
+
+      - name: Type check (apps/web)
+        working-directory: apps/web
+        run: bun run check
+
+      - name: Build (apps/web)
+        working-directory: apps/web
+        run: bun run build

@@ -1,0 +1,4 @@
+/* Tailwind v4 entry. Theme tokens land via @theme in C2 (alongside
+   the design-token JSON → CSS custom property pipeline per ADR-014 §C);
+   the v1 system.css ports near-verbatim alongside that work. */
+@import 'tailwindcss';

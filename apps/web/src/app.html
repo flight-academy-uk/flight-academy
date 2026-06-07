@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    %sveltekit.head%
+  </head>
+  <body data-sveltekit-preload-data="hover">
+    <!-- `class="contents"` (Tailwind v4 utility) rather than `style="display: contents"` —
+         ADR-015 §E forbids inline-style attributes across all surfaces, and the Tailwind
+         utility produces the same layout-flattening effect via a hashed class. -->
+    <div class="contents">%sveltekit.body%</div>
+  </body>
+</html>

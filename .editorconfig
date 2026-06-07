@@ -66,7 +66,9 @@ indent_style = tab
 [*.go]
 indent_style = tab
 
-# Lockfiles — leave untouched
-[{Cargo.lock,package-lock.json,bun.lockb,yarn.lock,pnpm-lock.yaml,pubspec.lock}]
+# Lockfiles — leave untouched. `bun.lock` is the modern text format
+# (Bun 1.2+); `bun.lockb` is the deprecated binary format kept here for
+# any inherited projects.
+[{Cargo.lock,package-lock.json,bun.lock,bun.lockb,yarn.lock,pnpm-lock.yaml,pubspec.lock}]
 trim_trailing_whitespace = false
 insert_final_newline = false
