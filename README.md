@@ -58,7 +58,7 @@ Flight Academy contains no telemetry. No phone-home, no usage analytics, no erro
 | --- | --- |
 | Architectural decision records | accepted (ADR-001 through ADR-020) |
 | Backend API (Rust, Axum) | in active development — HTTP foundation, ABAC primitives, hash-chained audit trail, tenants resource (read + write) |
-| Web (MASH) | pending — design tokens preserved at `apps/web-ui/tokens/`; MASH foundations (Maud handlers + vendored HTMX/Alpine + Tailwind compile) land next per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §Q |
+| Web (MASH) | in active development — Maud `/` landing page; vendored HTMX 2.x + CSP-safe Alpine; Tailwind compiled at build time; content-hashed `/static/*` URLs; `embedded-static` cargo feature for self-host single-binary distribution per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O |
 | Mobile (Flutter) | not started |
 | Helm chart for K8s self-host | not started |
 | `docker-compose.yaml` for single-host self-host | not started |
@@ -103,6 +103,14 @@ bash install.sh
 ```
 
 K8s users — Helm chart at `ghcr.io/flight-academy-uk/charts/flight-academy`. Full guide at [docs/self-hosting/](docs/self-hosting/).
+
+Building the self-host single-binary artefact from source:
+
+```bash
+cargo build --release -p flight-academy-api --features embedded-static
+```
+
+The `embedded-static` cargo feature bakes every served asset (Tailwind-compiled CSS, vendored HTMX + Alpine bundles, fonts) into the binary via `rust-embed` per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O, so the resulting `flight-academy` binary is fully self-contained — no on-disk `static/` directory required at runtime. The default build (no feature flag) serves `/static/*` from disk via `ServeDir` for hosted-production deployments (where CloudFront fronts the asset path).
 
 ## Contributing
 

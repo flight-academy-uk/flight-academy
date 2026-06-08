@@ -131,6 +131,63 @@ async fn home_returns_html_200() {
     );
 }
 
+// Real-asset byte-serving is only exercised under `--features
+// embedded-static`. The default `ServeDir::new("apps/api/static")` resolves
+// relative to the binary's cwd — `cargo run` from the workspace root
+// works, but `cargo test` runs with cwd = package root and the disk-read
+// resolves to a non-existent path. That cwd-pathing is fine in production
+// (the deployed binary's cwd is the deployment dir) and the response-chain
+// invariants are still covered by the 404 path in
+// `static_assets_carry_immutable_cache_control` below. The embedded path
+// has no cwd dependency — `rust-embed` bakes the bytes into the binary at
+// compile time — so it's the variant that can be tested end-to-end here.
+#[cfg(feature = "embedded-static")]
+#[tokio::test]
+async fn embedded_static_serves_real_app_css_bytes() {
+    let app = flight_academy_api::app_for_test();
+    let req = Request::builder()
+        .uri(flight_academy_api::assets::APP_CSS)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "embedded /static/app-<hash>.css must be served from compile-time bytes — URL is {}",
+        flight_academy_api::assets::APP_CSS,
+    );
+
+    let content_type = resp
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .expect("embedded asset must carry Content-Type")
+        .to_str()
+        .unwrap();
+    assert!(
+        content_type.starts_with("text/css"),
+        "compiled Tailwind output must serve as text/css; got {content_type}",
+    );
+
+    let cache_control = resp
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .expect("embedded asset must carry Cache-Control")
+        .to_str()
+        .unwrap();
+    assert!(
+        cache_control.contains("immutable"),
+        "embedded /static/* must inherit the immutable cache layer per ADR-020 §I; got: {cache_control}",
+    );
+
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert!(
+        !bytes.is_empty(),
+        "embedded CSS body must be non-empty; got {} bytes",
+        bytes.len(),
+    );
+}
+
 #[tokio::test]
 async fn static_assets_carry_immutable_cache_control() {
     // ServeDir is wrapped with a `SetResponseHeaderLayer::if_not_present`

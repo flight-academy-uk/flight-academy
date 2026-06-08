@@ -78,7 +78,7 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
    - [ ] Commits are signed
    - [ ] Tests added or updated
    - [ ] Rust: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check` pass — or run `scripts/check-all.sh` to invoke them in one pass alongside `cargo audit`, `gitleaks`, `typos`, `shellcheck`, and `actionlint`
-   - [ ] Web: `cargo build` triggers Tailwind compile via `apps/api/build.rs` (PR B will add a CSS bundle size budget gate per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O / §N step 4)
+   - [ ] Web: `cargo build` triggers Tailwind compile via `apps/api/build.rs`; CI enforces the < 20KB gzipped CSS budget per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §N step 4. Self-host single-binary variant builds with `cargo build --release -p flight-academy-api --features embedded-static`
    - [ ] Mobile: `flutter analyze`, `flutter test` pass (when touched, once `apps/mobile` lands)
    - [ ] User-facing changes documented (CHANGELOG `[Unreleased]`)
    - [ ] No telemetry / phone-home introduced
