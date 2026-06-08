@@ -1,24 +1,31 @@
-//! Build script — compile Tailwind v4 CSS for the MASH HTML surface (ADR-020 §O).
+//! Build script — produce every served asset for the MASH HTML surface
+//! (ADR-020 §O).
 //!
-//! Runs `bun x @tailwindcss/cli` once per Cargo build. Inputs:
+//! Two stages, sequenced; the second runs after Tailwind so the static/
+//! tree is fully populated before the Rust compile reads it.
 //!
-//!   - `styles/app.css` — Tailwind directive entry-point.
-//!   - `src/**/*.rs` — Tailwind v4's content scanner extracts utility-class
-//!     references from Maud templates compiled into the binary.
+//! 1. **Tailwind compile.** `bun x @tailwindcss/cli` reads
+//!    `styles/app.css` (the Tailwind directive entry-point) and scans
+//!    `src/**/*.rs` for utility-class references in Maud templates,
+//!    then emits the minified bundle to `static/app.css`.
 //!
-//! Output:
+//! 2. **Vendored JS copy.** Distributed minified bundles for HTMX 2.x +
+//!    extensions (sse, response-targets, preload) and Alpine.js 3.x are
+//!    copied from `node_modules/` into `static/vendor/`. The browser
+//!    loads each bundle via `<script src="/static/vendor/...">`. Pinned
+//!    versions live in `package.json`; `bun.lock` guarantees the
+//!    extracted bundle is byte-identical across machines.
 //!
-//!   - `static/app.css` — minified bundle served by the `/static/*`
-//!     `tower-http::services::ServeDir` route. The `static/` directory is
-//!     gitignored; build artefacts produce themselves at build time, not at
-//!     commit time. Content-hashed asset URLs + the `embedded-static` cargo
-//!     feature (rust-embed) land in the MASH foundations PR B (ADR-020 §O).
+//! `static/` is gitignored — build artefacts reproduce from sources, not
+//! from commits. Content-hashed asset URLs and the `embedded-static`
+//! cargo feature (rust-embed) land in the next slices per ADR-020 §O.
 //!
-//! Bun is required at build time per ADR-020 §O (dev tooling, not production
-//! runtime). If `apps/api/node_modules/` is absent the build script runs
-//! `bun install --frozen-lockfile` first; afterwards `bun x @tailwindcss/cli`
-//! resolves from the local install. Network access is therefore required on
-//! the first build after a fresh checkout but not on subsequent rebuilds.
+//! Bun is required at build time per ADR-020 §O (dev tooling, not
+//! production runtime). If `apps/api/node_modules/` is absent the build
+//! script runs `bun install --frozen-lockfile` first; afterwards
+//! `bun x @tailwindcss/cli` and the vendor copy step resolve from the
+//! local install. Network access is therefore required on the first
+//! build after a fresh checkout but not on subsequent rebuilds.
 
 use std::env;
 use std::path::PathBuf;
@@ -71,5 +78,64 @@ fn main() {
     if !status.success() {
         eprintln!("build.rs: @tailwindcss/cli exited non-zero ({status})");
         exit(1);
+    }
+
+    // Vendored JS bundles for the MASH client layer (ADR-020 §F): HTMX
+    // 2.x + extensions and Alpine.js 3.x. Each (source, target) is the
+    // distributed minified bundle copied verbatim — no bundler, no
+    // transformation, no concatenation. The version pins live in
+    // `package.json` / `bun.lock`; the file paths under `dist/` are the
+    // upstream convention for each package.
+    let vendor_dir = static_dir.join("vendor");
+    std::fs::create_dir_all(&vendor_dir).expect("create apps/api/static/vendor/");
+
+    const VENDORED_JS: &[(&str, &str)] = &[
+        // HTMX core + extensions. Extensions are activated per surface
+        // via `hx-ext="..."` attributes; the script tag is loaded
+        // unconditionally because the cost is small (~1-2KB per ext).
+        (
+            "node_modules/htmx.org/dist/htmx.min.js",
+            "static/vendor/htmx.min.js",
+        ),
+        (
+            "node_modules/htmx-ext-sse/dist/sse.min.js",
+            "static/vendor/htmx-ext-sse.min.js",
+        ),
+        (
+            "node_modules/htmx-ext-response-targets/dist/response-targets.min.js",
+            "static/vendor/htmx-ext-response-targets.min.js",
+        ),
+        (
+            "node_modules/htmx-ext-preload/dist/preload.min.js",
+            "static/vendor/htmx-ext-preload.min.js",
+        ),
+        // Alpine.js, CSP-safe build (`@alpinejs/csp`). Drops the
+        // `new Function()` evaluator that the standard build relies on
+        // for inline `x-data` expressions, so strict CSP needs neither
+        // `'unsafe-inline'` nor `'unsafe-eval'`. Trade-off: `x-data`,
+        // `x-text`, `@click`, etc. accept registered component names
+        // and property/method references — not arbitrary JS expressions.
+        // Components are registered via `Alpine.data('name', () => ({...}))`
+        // in an external script (so a CSP allow-list `script-src 'self'`
+        // covers it). See ADR-020 §K and the Alpine CSP docs at
+        // https://alpinejs.dev/advanced/csp.
+        (
+            "node_modules/@alpinejs/csp/dist/cdn.min.js",
+            "static/vendor/alpine.min.js",
+        ),
+    ];
+
+    for (src, dst) in VENDORED_JS {
+        let src_path = manifest_dir.join(src);
+        let dst_path = manifest_dir.join(dst);
+        std::fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {
+            eprintln!(
+                "build.rs: copy {} → {} failed: {}",
+                src_path.display(),
+                dst_path.display(),
+                e,
+            );
+            exit(1);
+        });
     }
 }
