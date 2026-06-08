@@ -277,6 +277,8 @@ This is the original [ADR-002 §H](ADR-002-release-deployment.md) single-binary 
 - `apps/web-ui/tokens/tokens.json` — design tokens source-of-truth; consumed by Tailwind `@theme`
 - `apps/web-ui/tokens/tokens.schema.json` — IDE validation
 - `apps/web-ui/tokens/tokens.css` — emitted CSS custom properties, imported into Tailwind layer
+- **`tokens.dart` emission for Flutter** — the [ADR-014 §C](ADR-014-frontend-architecture.md) web↔mobile design-token bridge survives unchanged. `tokens.json` continues to generate `tokens.dart` for `apps/mobile`; the emitter is a build-time artefact independent of the web rendering choice
+- **[ADR-014 §F](ADR-014-frontend-architecture.md) first-party tenant asset pipeline** — logo / favicon / OG image upload validation (MIME allow-list, max dimensions, SVG sanitisation), raster transcoding to AVIF/WebP plus JPEG/PNG fallback at tiered sizes, content negotiation at serve, content-hashed immutable URLs, CDN long-TTL caching. The mechanism lives in `apps/api` per ADR-014 §F's *"Static handler in `apps/api`"* specification; ADR-019's `/api/v1/tenant/brand.css` endpoint composes with it. Nothing in the asset pipeline changes under MASH — same code path, same upload surface, same serve-time content negotiation. The brand CSS asset added by [ADR-019 §B](ADR-019-white-label-runtime.md) is a *derived* member of the same pipeline
 
 **Added:**
 
