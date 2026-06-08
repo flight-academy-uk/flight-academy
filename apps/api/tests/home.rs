@@ -191,9 +191,13 @@ async fn server_id_fragment_returns_bare_html_with_uuid_v7() {
         "fragment must be text/html so HTMX swaps it; got {content_type}",
     );
 
-    // Per ADR-020 §I per-user HTMX swap endpoints inherit the
-    // `Cache-Control: no-store` middleware default — fragments are
-    // not cached and the handler does not override.
+    // Per ADR-020 §I HTMX fragment endpoints carry `private, no-cache`
+    // — `private` because fragments may hold per-user data, `no-cache`
+    // so a browser MUST revalidate before reuse. Not `no-store`:
+    // `no-cache` permits conditional-GET / `304 Not Modified` once
+    // handlers gain `ETag` support, which `no-store` would preclude.
+    // The handler overrides the middleware no-store default
+    // explicitly (the security_headers middleware uses or_insert).
     let cache_control = resp
         .headers()
         .get(header::CACHE_CONTROL)
@@ -201,8 +205,16 @@ async fn server_id_fragment_returns_bare_html_with_uuid_v7() {
         .to_str()
         .unwrap();
     assert!(
-        cache_control.contains("no-store"),
-        "fragment endpoints must inherit no-store per ADR-020 §I — got: {cache_control}",
+        cache_control.contains("private"),
+        "fragment endpoints must be private per ADR-020 §I — got: {cache_control}",
+    );
+    assert!(
+        cache_control.contains("no-cache"),
+        "fragment endpoints must be no-cache per ADR-020 §I — got: {cache_control}",
+    );
+    assert!(
+        !cache_control.contains("no-store"),
+        "fragment endpoints must NOT be no-store — no-cache permits ETag/304 once added; got: {cache_control}",
     );
 
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();

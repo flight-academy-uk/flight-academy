@@ -84,6 +84,16 @@ pub async fn get() -> impl IntoResponse {
     )
 }
 
+/// `Cache-Control` for HTMX fragment endpoints per ADR-020 §I — `private`
+/// because fragments may carry per-user data, `no-cache` so a browser
+/// MUST revalidate before reuse. Not `no-store`: `no-cache` permits
+/// conditional-GET / `304 Not Modified` once handlers gain `ETag`
+/// support, which `no-store` would preclude. The middleware default
+/// is `no-store` (sized for the JSON API surface); this handler sets
+/// the header explicitly so the per-fragment policy wins via the
+/// `or_insert` middleware semantics.
+const FRAGMENT_CACHE_CONTROL: &str = "private, no-cache";
+
 /// HTMX fragment endpoint — `GET /_hx/home/server-id`.
 ///
 /// Returns a Maud fragment (no `<html>` chrome) carrying a freshly
@@ -99,5 +109,11 @@ pub async fn get() -> impl IntoResponse {
 /// other live content; it is a `<span>` with the id.
 pub async fn server_id() -> impl IntoResponse {
     let id = uuid::Uuid::now_v7();
-    view::server_id_fragment(&id.to_string())
+    (
+        [(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static(FRAGMENT_CACHE_CONTROL),
+        )],
+        view::server_id_fragment(&id.to_string()),
+    )
 }
