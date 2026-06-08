@@ -2,11 +2,13 @@
 
 | Field | Value |
 | --- | --- |
-| **Status** | Accepted |
+| **Status** | Superseded by [ADR-020](ADR-020-mash-frontend-architecture.md) |
 | **Date** | 2026-06-02 |
+| **Superseded on** | 2026-06-08 |
 | **Deciders** | @ICreateThunder |
 | **Tags** | frontend, sveltekit, flutter, white-label, components, embedded-static |
 | **Supersedes** | (none — refines [ADR-001 §B](ADR-001-platform.md), [ADR-005](ADR-005-workspace-layout.md)) |
+| **Superseded by** | [ADR-020](ADR-020-mash-frontend-architecture.md) — frontend stack changes from SvelteKit to MASH (Maud + Axum + SQLx + HTMX + Alpine + Tailwind v4); the JSON API contract, the Dart mobile client path (§E), the design-token bridge (§C), and the first-party tenant asset pipeline (§F) all carry forward unchanged into ADR-020. The body of this ADR remains as historical record per [GOVERNANCE.md](../../GOVERNANCE.md). |
 
 ## Context
 
