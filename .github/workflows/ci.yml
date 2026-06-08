@@ -11,10 +11,10 @@
 # Swatinem/rust-cache namespace so registry + target/ are warm after the
 # first run on a branch.
 #
-# Web (apps/web) and Mobile (apps/mobile) jobs land alongside those
-# subsystems. Cross-cutting checks (cargo deny / cargo audit / actionlint /
-# codespell) run via `scripts/check-all.sh` locally today; CI integration
-# lands when the install + caching plumbing is justified.
+# MASH web tooling (Tailwind compile + asset hashing per ADR-020 §O) and
+# Mobile (apps/mobile) jobs land alongside those subsystems. Cross-cutting
+# checks (cargo deny / cargo audit / actionlint / codespell) run via
+# `scripts/check-all.sh` locally today; CI integration lands when justified.
 
 name: CI
 

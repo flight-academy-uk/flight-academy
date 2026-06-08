@@ -14,7 +14,10 @@ name = "flight-academy"
 path = "src/main.rs"
 
 # embedded-static gates rust-embed + a static-asset handler for self-host
-# (ADR-002 §H, ADR-005 §D). Body empty until apps/web/build/ exists.
+# (ADR-002 §H, ADR-005 §D, ADR-020 §O). Body empty until `apps/api/static/`
+# is populated — Maud templates compile into the binary directly; the
+# embedded-static feature wraps the *static* assets (vendored HTMX + Alpine,
+# compiled Tailwind CSS, IBM Plex woff2) for the self-host single binary.
 [features]
 embedded-static = []
 
