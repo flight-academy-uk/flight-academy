@@ -17,12 +17,14 @@ name = "flight-academy"
 path = "src/main.rs"
 
 # embedded-static gates rust-embed + a static-asset handler for self-host
-# (ADR-002 §H, ADR-005 §D, ADR-020 §O). Body empty until `apps/api/static/`
-# is populated — Maud templates compile into the binary directly; the
-# embedded-static feature wraps the *static* assets (vendored HTMX + Alpine,
-# compiled Tailwind CSS, IBM Plex woff2) for the self-host single binary.
+# (ADR-002 §H, ADR-005 §D, ADR-020 §O). The feature swaps the `ServeDir`
+# static service for an in-memory `rust-embed`-backed handler so the
+# self-host artefact (`flight-academy-embedded`) ships as a single binary —
+# Maud templates already compile into the binary directly; this feature
+# wraps the *static* assets (vendored HTMX + Alpine, compiled Tailwind CSS;
+# IBM Plex woff2 lands in the typography slice).
 [features]
-embedded-static = []
+embedded-static = ["dep:rust-embed"]
 
 [dependencies]
 axum = { version = "0.8.9", features = ["macros"] }
@@ -32,6 +34,15 @@ flight-academy-auth = { version = "0.1.0", path = "../../crates/flight-academy-a
 flight-academy-core = { version = "0.1.0", path = "../../crates/flight-academy-core" }
 flight-academy-db = { version = "0.1.0", path = "../../crates/flight-academy-db" }
 maud = { version = "0.27.0", features = ["axum"] }
+# rust-embed bakes `apps/api/static/` into the binary under
+# `--features embedded-static` per ADR-020 §O (self-host single-binary
+# distribution variant). `debug-embed` forces compile-time embedding under
+# `cargo test` and debug builds — without it rust-embed would re-read the
+# source directory at runtime, which defeats the point of the test variant
+# (we want the test to exercise the same code path that ships). `mime-guess`
+# enables `Metadata::mimetype()` so the embedded handler emits the right
+# `Content-Type` without us hand-maintaining an extension → MIME map.
+rust-embed = { version = "8.11.0", optional = true, features = ["debug-embed", "mime-guess"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros"] }

@@ -153,6 +153,19 @@ jobs:
         # `services.postgres` container above is ignored here.
         run: cargo test --workspace
 
+      - name: cargo test (--features embedded-static)
+        # Self-host single-binary distribution variant per ADR-020 §O —
+        # `rust-embed` bakes `apps/api/static/` into the binary. The home
+        # integration tests cover the `embedded-static` code path
+        # (`embedded_static_serves_real_app_css_bytes`); running them here
+        # locks in coverage so a regression in the embedded handler can't
+        # land silently while the default `ServeDir` path stays green.
+        # Scoped to `-p flight-academy-api` because the feature is declared
+        # only on that crate; scoped to `--test home` to keep the extra CI
+        # time bounded (the other integration tests don't depend on the
+        # static-asset path).
+        run: cargo test -p flight-academy-api --features embedded-static --test home
+
       - name: Apply migrations to the schema-diff fixture
         env:
           DATABASE_URL: postgres://postgres@localhost:5432/flight_academy_dev

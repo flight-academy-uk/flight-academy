@@ -10,7 +10,9 @@
 //! Handler functions and their wire-shape response types live under
 //! [`handlers`], one module per resource.
 
-pub(crate) mod assets;
+pub mod assets;
+#[cfg(feature = "embedded-static")]
+mod embedded;
 mod error;
 mod handlers;
 mod middleware;
@@ -23,6 +25,7 @@ pub use handlers::tenants::{TenantDeleteRequest, TenantPatchRequest, TenantRespo
 use axum::http::{HeaderValue, header};
 use tower::ServiceBuilder;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
+#[cfg(not(feature = "embedded-static"))]
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::OpenApi;
@@ -65,11 +68,7 @@ fn build(with_dev_auth: bool) -> Built {
     // MASH HTML surface (ADR-020). Plain axum routes — not in the OpenAPI
     // contract per §A — merged into the OpenApiRouter so they participate
     // in the same middleware stack (request-id propagation, security
-    // headers). `ServeDir` resolves paths relative to the binary's cwd;
-    // for dev with `cargo run` from repo root that's `apps/api/static`,
-    // for `cargo test` the same path resolves because tests don't fetch
-    // the static directory. The `embedded-static` feature (rust-embed)
-    // lands alongside IBM Plex / `@theme` tokens per ADR-020 §O.
+    // headers).
     //
     // The `/_hx/<resource>/...` prefix marks server-rendered Maud
     // fragments that HTMX swaps into DOM slots on the originating page.
@@ -85,12 +84,28 @@ fn build(with_dev_auth: bool) -> Built {
     // The header layer applies only to the `/static/*` subtree; the
     // `if_not_present` semantics let the `security_headers` middleware
     // skip its `Cache-Control: no-store` default for this route.
+    //
+    // Static-asset source per ADR-020 §O depends on the build variant:
+    //   • Default (hosted-production / dev): `ServeDir` reads from
+    //     `apps/api/static/` on disk, relative to the binary's cwd
+    //     (`cargo run` / `cargo test` from repo root resolve correctly).
+    //   • `--features embedded-static`: every byte is baked into the
+    //     binary at compile time via `rust-embed` (see `embedded.rs`),
+    //     producing the self-host `flight-academy-embedded` artefact.
+    // The wrapping `SetResponseHeaderLayer::if_not_present` applies
+    // uniformly — keeping the cache policy in one place avoids two-paths
+    // drift if the immutable URL strategy changes later.
+    #[cfg(not(feature = "embedded-static"))]
+    let static_inner = ServeDir::new("apps/api/static");
+    #[cfg(feature = "embedded-static")]
+    let static_inner = embedded::service();
+
     let immutable_static = ServiceBuilder::new()
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CACHE_CONTROL,
             HeaderValue::from_static("public, max-age=31536000, immutable"),
         ))
-        .service(ServeDir::new("apps/api/static"));
+        .service(static_inner);
 
     let html_routes = OpenApiRouter::new()
         .route("/", axum::routing::get(handlers::home::get))
