@@ -7,6 +7,9 @@ repository.workspace = true
 publish.workspace = true
 
 # Lib + bin in one crate per ADR-005 §D; binary name follows ADR-002 §C/§E.
+# `build.rs` at the package root is auto-detected by Cargo; it compiles
+# Tailwind v4 CSS for the MASH HTML surface (ADR-020 §O) via Bun +
+# @tailwindcss/cli, emitting `static/app.css` for the `/static/*` ServeDir.
 [lib]
 
 [[bin]]
@@ -28,12 +31,13 @@ derive_more = { version = "2.1.1", features = ["from"] }
 flight-academy-auth = { version = "0.1.0", path = "../../crates/flight-academy-auth" }
 flight-academy-core = { version = "0.1.0", path = "../../crates/flight-academy-core" }
 flight-academy-db = { version = "0.1.0", path = "../../crates/flight-academy-db" }
+maud = { version = "0.27.0", features = ["axum"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["request-id", "trace"] }
+tower-http = { version = "0.6.11", features = ["fs", "request-id", "trace"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 utoipa = { version = "5.5.0", features = ["axum_extras", "uuid"] }

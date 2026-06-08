@@ -51,6 +51,31 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Bun
+        # `apps/api/build.rs` invokes Bun + @tailwindcss/cli to compile the
+        # MASH web surface's stylesheet (ADR-020 §O). Bun is therefore a
+        # build-time dependency for any cargo command that compiles the
+        # `flight-academy-api` package, including `cargo clippy --all-targets`.
+        # Production runtime does not include Bun — it is dev-tooling only.
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.3.1'
+
+      - name: Cache Bun install
+        # Caches Bun's global tarball cache (not node_modules — keying that
+        # on bun.lock is fragile, and `bun install` is fast when the global
+        # cache is warm). Same posture as the deleted Web CI cache step.
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.HOME }}/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('apps/api/bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install Bun deps
+        working-directory: apps/api
+        run: bun install --frozen-lockfile
+
       - name: Rust build cache
         # Caches ~/.cargo/{registry,git} + target/ keyed on Cargo.lock +
         # workspace fingerprint. PR caches scope to the PR's branch; they
@@ -100,6 +125,25 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+
+      - name: Set up Bun
+        # Same rationale as the `lint` job: `apps/api/build.rs` requires Bun
+        # at compile time (ADR-020 §O Tailwind dev tooling).
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.3.1'
+
+      - name: Cache Bun install
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ env.HOME }}/.bun/install/cache
+          key: bun-install-${{ runner.os }}-${{ hashFiles('apps/api/bun.lock') }}
+          restore-keys: |
+            bun-install-${{ runner.os }}-
+
+      - name: Install Bun deps
+        working-directory: apps/api
+        run: bun install --frozen-lockfile
 
       - name: Rust build cache
         uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1

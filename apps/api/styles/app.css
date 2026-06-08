@@ -1,0 +1,15 @@
+/* Tailwind v4 input — single entry-point for the MASH web surface (ADR-020 §E).
+ *
+ * `@import "tailwindcss"` pulls in Preflight (CSS reset) + the utility-class
+ * generator. The `@tailwindcss/cli` invocation in build.rs reads this file
+ * and the Rust sources under src/ to extract the utility classes referenced
+ * by Maud templates, then emits the minified bundle to ../static/app.css.
+ *
+ * Token integration (`@theme` mapping to apps/web-ui/tokens/tokens.json),
+ * @import of tokens.css as a Tailwind layer, the `base.css` typography +
+ * IBM Plex setup, and the tight palette / breakpoint / @layer components
+ * pruning described in ADR-020 §E land in the MASH foundations PR B
+ * alongside HTMX/Alpine vendoring and content-hashed asset URLs.
+ */
+
+@import "tailwindcss";
