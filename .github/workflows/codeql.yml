@@ -57,9 +57,13 @@ jobs:
     timeout-minutes: 60
     permissions:
       security-events: write # upload SARIF to the code-scanning dashboard
-      # `contents: read` and `actions: read` are inherited from the root
-      # permissions block; the documented private-repo requirement does
-      # not apply (this repo is public).
+      # Job-level `permissions:` REPLACES the workflow root — it does not
+      # merge. Every scope not listed here is implicitly `none` (except
+      # `metadata: read`, which GitHub always grants). `contents: read`
+      # is omitted because this repo is public: `actions/checkout` clones
+      # without a token, and the CodeQL Rust extractor reads from the
+      # filesystem, not the API. A private fork of this repo would need
+      # `contents: read` here for the checkout step to authenticate.
 
     strategy:
       fail-fast: false
