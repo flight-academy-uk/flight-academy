@@ -20,6 +20,7 @@ pub use handlers::health::HealthResponse;
 pub use handlers::tenants::{TenantDeleteRequest, TenantPatchRequest, TenantResponse};
 
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
+use tower_http::services::ServeDir;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -57,6 +58,18 @@ fn build(with_dev_auth: bool) -> Built {
         tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn(middleware::dev_auth));
     }
 
+    // MASH HTML surface (ADR-020). Plain axum routes — not in the OpenAPI
+    // contract per §A — merged into the OpenApiRouter so they participate
+    // in the same middleware stack (request-id propagation, security
+    // headers). `ServeDir` resolves paths relative to the binary's cwd;
+    // for dev with `cargo run` from repo root that's `apps/api/static`,
+    // for `cargo test` the same path resolves because tests don't fetch
+    // the static directory. Content-hashed asset URLs and the
+    // `embedded-static` feature (rust-embed) land in PR B per ADR-020 §O.
+    let html_routes = OpenApiRouter::new()
+        .route("/", axum::routing::get(handlers::home::get))
+        .nest_service("/static", ServeDir::new("apps/api/static"));
+
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
     // OUTSIDE the previous one): `Propagate` is applied first so it ends up
     // INNER; `Set` is applied second so it ends up OUTER. On request, Set
@@ -71,6 +84,7 @@ fn build(with_dev_auth: bool) -> Built {
     let (router, openapi) = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .routes(routes!(handlers::health::healthz))
         .merge(tenant_routes)
+        .merge(html_routes)
         .layer(PropagateRequestIdLayer::new(middleware::X_REQUEST_ID))
         .layer(SetRequestIdLayer::new(
             middleware::X_REQUEST_ID,

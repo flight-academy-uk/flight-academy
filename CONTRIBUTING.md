@@ -78,7 +78,7 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
    - [ ] Commits are signed
    - [ ] Tests added or updated
    - [ ] Rust: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check` pass — or run `scripts/check-all.sh` to invoke them in one pass alongside `cargo audit`, `gitleaks`, `typos`, `shellcheck`, and `actionlint`
-   - [ ] Web (when MASH foundations land per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O): Tailwind compile + CSS bundle size budget pass
+   - [ ] Web: `cargo build` triggers Tailwind compile via `apps/api/build.rs` (PR B will add a CSS bundle size budget gate per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O / §N step 4)
    - [ ] Mobile: `flutter analyze`, `flutter test` pass (when touched, once `apps/mobile` lands)
    - [ ] User-facing changes documented (CHANGELOG `[Unreleased]`)
    - [ ] No telemetry / phone-home introduced
@@ -105,17 +105,18 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
 Current prerequisites (toolchain pinning via `rust-toolchain.toml` will follow once the toolchain decision settles; a `Justfile` will land alongside an end-to-end dev orchestration command):
 
 - Rust 1.83+ (`cargo`, `rustc`, `rustfmt`, `clippy`)
+- Bun 1.3+ — `apps/api/build.rs` invokes Bun + `@tailwindcss/cli` to compile the MASH web surface's stylesheet per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O. Required at build time; not in production runtime.
 - Docker (testcontainers for integration tests; Postgres 18 image)
 - `gitleaks`, `typos`, `shellcheck`, `actionlint`, `cargo-audit`, `cargo-deny` — `scripts/check-all.sh` will tell you which are missing
-- Bun 1.3+ — added back when the MASH foundations PR lands (Tailwind CLI compile per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O); not required today
 - Flutter latest stable (only when `apps/mobile` lands)
 
 What currently runs locally:
 
 ```bash
-cargo build --workspace
-cargo test --workspace                              # spins up testcontainers
-scripts/check-all.sh                                # mirrors the CI quality gate
+cd apps/api && bun install --frozen-lockfile && cd ../..   # one-time Tailwind CLI setup
+cargo build --workspace                              # build.rs compiles Tailwind on first run
+cargo test --workspace                               # spins up testcontainers
+scripts/check-all.sh                                 # mirrors the CI quality gate
 ```
 
 Full setup guide will be at [docs/development/setup.md](docs/development/setup.md) when there is enough to write down beyond the above.

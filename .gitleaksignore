@@ -13,6 +13,8 @@ CONTRIBUTING.md:personal-tilde-dotfile-path:43
 # cargo-deny convention for locating the local RustSec advisory DB.
 deny.toml:personal-tilde-dotfile-path:27
 
-# .github/workflows/ci.yml L55 — comment documenting Swatinem/rust-cache's
+# .github/workflows/ci.yml L80 — comment documenting Swatinem/rust-cache's
 # scope: caches `~/.cargo/{registry,git}` + `target/`. Standard Rust path.
-.github/workflows/ci.yml:personal-tilde-dotfile-path:55
+# (Was L55 before the MASH foundations PR inserted Bun setup steps ahead
+# of the Rust cache step.)
+.github/workflows/ci.yml:personal-tilde-dotfile-path:80

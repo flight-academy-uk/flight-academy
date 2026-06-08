@@ -42,6 +42,12 @@ dist/
 # Bun
 .bun/
 
+# MASH build artefacts — `apps/api/build.rs` emits compiled Tailwind CSS
+# (and, in PR B, content-hashed JS bundles) into `apps/api/static/`. The
+# contents are reproduced from sources on every `cargo build`; nothing in
+# this directory is hand-edited or commit-tracked.
+apps/api/static/
+
 # -----------------------------------------------------------------------------
 # Flutter / Dart (apps/mobile)
 # -----------------------------------------------------------------------------

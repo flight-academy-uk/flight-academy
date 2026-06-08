@@ -6,4 +6,5 @@
 
 pub mod audit_events;
 pub mod health;
+pub mod home;
 pub mod tenants;

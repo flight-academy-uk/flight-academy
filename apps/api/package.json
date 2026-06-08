@@ -1,0 +1,12 @@
+{
+  "name": "@flight-academy/api-assets",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only Bun workspace for apps/api: Tailwind v4 CLI compiles styles/app.css into static/app.css at build time (ADR-020 §O). Not in production runtime — the compiled CSS is served by the Rust binary via tower-http ServeDir today, and by rust-embed once the embedded-static feature lands (ADR-002 §H).",
+  "scripts": {
+    "build:css": "tailwindcss -i ./styles/app.css -o ./static/app.css --minify"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.0"
+  }
+}

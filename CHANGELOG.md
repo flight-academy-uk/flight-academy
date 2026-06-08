@@ -26,15 +26,19 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Startup pool-role pre-flight (`Db::verify_audit_pool_role`): refuses to start `serve` if the pool's session role lacks `INSERT`/`SELECT` grant on `audit_events` or doesn't bypass RLS — closes the silent-chain-fork failure mode (RLS-subjected role would return empty `prev_hash` lookups, every row becoming a new "first" entry without surface).
 - Baseline security headers (ADR-004 §F + OWASP additions): Content-Security-Policy (deny-everything for JSON), Strict-Transport-Security preload, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (sensors / camera / mic / geolocation / payment / USB denied), Cross-Origin-Resource-Policy same-origin, Cross-Origin-Opener-Policy same-origin, Cache-Control no-store. Emitted outermost via `entry().or_insert()` so future static-route handlers can supply their own per-surface CSP.
 
-#### Web — pending MASH foundations (per ADR-020)
+#### Web — MASH foundations (Maud + Axum + Tailwind)
 
-- `apps/web-ui/tokens/` preserved as design source-of-truth (`tokens.json` + JSON Schema + `tokens.css`); will be consumed by Tailwind `@theme` when the MASH foundations PR lands.
-- SvelteKit skeleton (`apps/web/`, root Bun workspace, `apps/web-ui` scripts + styles, root `package.json` / `bun.lock` / Prettier config, `.github/workflows/web-ci.yml`) removed per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §P. Web surface will be server-rendered by `apps/api` via Maud + HTMX + Alpine + Tailwind v4. Nothing has been released — this prune happens entirely inside `[Unreleased]`.
+- `maud = 0.27.0` (with the `axum` feature) added to `apps/api`. The MASH HTML surface lives in the same Rust binary as the JSON API per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §A.
+- `apps/api/build.rs` runs `bun x @tailwindcss/cli` to compile `apps/api/styles/app.css` → `apps/api/static/app.css` on every `cargo build`. `apps/api/static/` is gitignored — build artefacts are reproduced from sources, not committed.
+- `apps/api/package.json` declares a dev-only `@tailwindcss/cli 4.3.0` dependency; Bun manages installation. Bun is a build-time dependency; production runtime is Rust-only.
+- First MASH HTML route: `GET /` returns a Maud-rendered landing page linking the Tailwind stylesheet. Plain Axum route — not in the OpenAPI contract per ADR-020 §A — merged into the `OpenApiRouter` so it shares the request-id propagation + security headers middleware stack (ADR-004 §B / §F).
+- `/static/*` served by `tower_http::services::ServeDir` from `apps/api/static/`; resolves relative to the binary's cwd. Content-hashed asset URLs and the `embedded-static` cargo feature (rust-embed) land in PR B (HTMX + Alpine vendoring + IBM Plex woff2 + new Web CI workflow + Dependabot npm watcher).
+- `apps/web-ui/tokens/` (`tokens.json` + JSON Schema + `tokens.css`) preserved as design source-of-truth; the `@theme` mapping into Tailwind lands in PR B.
 
 #### CI / tooling
 
 - `scripts/check-all.sh` orchestrates `cargo audit`, `cargo deny check`, `gitleaks dir`, `typos`, `cargo fmt --check`, `cargo clippy -D warnings`, `shellcheck`, `actionlint` — same set the CI workflows run.
-- CI workflows: `CI` (Rust lint + test on PG 18 service + schema-drift check against committed `crates/flight-academy-db/schema.sql` per ADR-003 §E), `DCO` (inlined sign-off check), `OpenSSF Scorecard`. All actions SHA-pinned with version-trailer comments. MASH web tooling workflow (Tailwind compile + CSS bundle budget per ADR-020 §O) lands with the MASH foundations PR.
+- CI workflows: `CI` (Rust lint + test on PG 18 service + schema-drift check against committed `crates/flight-academy-db/schema.sql` per ADR-003 §E), `DCO` (inlined sign-off check), `OpenSSF Scorecard`. All actions SHA-pinned with version-trailer comments. Both `lint` and `test` jobs now install Bun 1.3.1 before any cargo command — `apps/api/build.rs` invokes `@tailwindcss/cli` at compile time per ADR-020 §O. A dedicated Web CI workflow (CSS bundle size budget + Tailwind drift) lands with PR B.
 - Integration test infrastructure: testcontainers-modules + tokio `OnceCell` PG container + `tokio::Mutex` migration lock; per-test fresh database; superuser pool so RLS is bypassed for seeds while tenant-scoped reads exercise the policy.
 - `Dependabot` configured for `cargo`, GitHub Actions, and Docker (anticipated `deploy/docker/`). Patches grouped per ecosystem; majors come as separate PRs. Web npm watcher is re-added with the MASH foundations PR (Tailwind dev dep per ADR-020 §O).
 

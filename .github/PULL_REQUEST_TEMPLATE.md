@@ -67,7 +67,7 @@ Closes #
 - [ ] PR title follows **Conventional Commits 1.0**; breaking changes use `!` (e.g. `feat(api)!: …`)
 - [ ] Tests added or updated where appropriate
 - [ ] **Rust:** `cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test --workspace` all pass locally
-- [ ] **Web** (when MASH foundations land per [ADR-020](../docs/architecture/ADR-020-mash-frontend-architecture.md) §O): Tailwind compile + CSS bundle size budget pass
+- [ ] **Web:** `cargo build` triggers Tailwind compile via `apps/api/build.rs` (PR B adds a CSS bundle size budget gate per [ADR-020](../docs/architecture/ADR-020-mash-frontend-architecture.md) §O / §N step 4)
 - [ ] **Mobile:** `flutter analyze` and `flutter test` pass (if `apps/mobile` touched)
 - [ ] User-facing documentation updated (README, `docs/`, in-app copy)
 - [ ] No new dependencies under licences incompatible with AGPLv3 (`cargo-deny` will enforce in CI)
