@@ -1,0 +1,106 @@
+# CodeQL — static analysis for Rust.
+#
+# Why a separate workflow file: CodeQL's analysis (extraction + query
+# evaluation) runs in the 5-15 minute range — orders of magnitude longer
+# than the cargo fmt + clippy gate in ci.yml. Keeping it in its own
+# workflow means a stuck CodeQL run can't block fast Rust feedback, and
+# its weekly schedule cadence is decoupled from the per-PR Rust matrix.
+#
+# Build mode: `none`. CodeQL Rust support went GA in CodeQL 2.23.3
+# (October 2025); the Rust extractor walks `Cargo.toml`s without invoking
+# `cargo build`. That sidesteps any build.rs / Bun toolchain dependency
+# in the analysis path — the extractor reads source, not compiled output.
+#
+# Value over the existing CI gates: CodeQL's strength here is
+# inter-procedural taint tracking — HTTP handler → sqlx query, path
+# param → std::fs sink, header → log sink. cargo-audit / cargo-deny
+# (dependency advisories), clippy (lints), and gitleaks (committed
+# secrets) all miss that class. The Rust query pack includes explicit
+# modeling for `sqlx`, `postgres`, `tokio-postgres`, and `rusqlite`.
+#
+# All actions are pinned to a full commit SHA; the trailing comment
+# records the human-readable version. Dependabot keeps both the SHA
+# and the comment current — the github/codeql-action repo is already
+# covered by the `actions-patch-minor` group in dependabot.yml.
+
+name: CodeQL
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    - cron: "17 3 * * 3" # Wednesdays 03:17 UTC — off-peak, spread away from scorecard's Mondays
+  workflow_dispatch:
+
+# CodeQL on main publishes results to the code-scanning dashboard; the
+# weekly schedule runs are not cancelled mid-flight. PR runs are
+# cancellable so a follow-up push supersedes the prior analysis.
+concurrency:
+  group: codeql-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Least-privilege at the workflow root. The analysis job widens to
+# security-events:write so it can upload SARIF to the code-scanning
+# dashboard.
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    name: CodeQL analysis (Rust)
+    runs-on: ubuntu-latest
+    # Defensive cap. Extraction + query evaluation of the workspace
+    # currently runs comfortably under 20 minutes; 60 catches a stuck
+    # checkout, query, or upload without burning the 6-hour default.
+    timeout-minutes: 60
+    permissions:
+      security-events: write # upload SARIF to the code-scanning dashboard
+      # Job-level `permissions:` REPLACES the workflow root — it does not
+      # merge. Every scope not listed here is implicitly `none` (except
+      # `metadata: read`, which GitHub always grants). `contents: read`
+      # is omitted because this repo is public: `actions/checkout` clones
+      # without a token, and the CodeQL Rust extractor reads from the
+      # filesystem, not the API. A private fork of this repo would need
+      # `contents: read` here for the checkout step to authenticate.
+
+    strategy:
+      fail-fast: false
+      # Matrix kept for future language additions (e.g. workflows-as-actions
+      # via `actions` language once we have composite actions worth scanning,
+      # or Dart when `apps/mobile` lands). Single-entry today.
+      matrix:
+        language: [rust]
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Initialise CodeQL
+        # Rust support GA in CodeQL 2.23.3; `build-mode: none` uses the
+        # build-less extractor so this workflow does not invoke `cargo
+        # build` or `bun install` (build.rs's Bun dependency is therefore
+        # outside the analysis path).
+        #
+        # `queries:` is omitted deliberately — CodeQL defaults to the
+        # `code-scanning` suite (the 16 Default Rust queries) which
+        # covers SQL injection (with sqlx/postgres/tokio-postgres
+        # modeling), path traversal, SSRF, regex injection, XSS,
+        # cleartext logging/storage/transmission, hard-coded crypto
+        # secrets, weak crypto algorithms, insecure cookie, disabled TLS
+        # cert check, uncontrolled allocation, access-of-invalid-pointer,
+        # use-after-lifetime. The Extended suite adds log injection
+        # (CWE-117) and a few more — revisit once the Default baseline
+        # settles and the false-positive rate is understood.
+        uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          category: "/language:${{ matrix.language }}"
