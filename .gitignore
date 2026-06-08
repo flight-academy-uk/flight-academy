@@ -27,39 +27,20 @@ flamegraph.svg
 # distributed library, so reproducible builds win. Do not add Cargo.lock here.
 
 # -----------------------------------------------------------------------------
-# Node / Bun / SvelteKit (apps/web and friends)
+# Node / Bun (Tailwind tooling under MASH per ADR-020 §O)
 # -----------------------------------------------------------------------------
+# ADR-020 supersedes ADR-014: the web surface is server-rendered by `apps/api`
+# (Maud), not a SvelteKit Node bundle. Bun stays in the dev pipeline solely
+# to run the Tailwind CLI at build time; production runtime is Rust-only.
 node_modules/
 **/node_modules/
 
-# SvelteKit generated output
-.svelte-kit/
-**/.svelte-kit/
-
-# Build output
+# Build output (generic — Tailwind / Flutter / misc dist directories)
 build/
 dist/
-.output/
-.vercel/
-.netlify/
-
-# Vite / Turbo / SWC caches
-.vite/
-.turbo/
-.swc/
-
-# Package manager scratch
-.pnp.*
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
-.yarn/install-state.gz
 
 # Bun
 .bun/
-
-# TypeScript incremental build info
-*.tsbuildinfo
 
 # -----------------------------------------------------------------------------
 # Flutter / Dart (apps/mobile)

@@ -26,22 +26,17 @@ and this project adheres to [Semantic Versioning 2.0.0](https://semver.org/spec/
 - Startup pool-role pre-flight (`Db::verify_audit_pool_role`): refuses to start `serve` if the pool's session role lacks `INSERT`/`SELECT` grant on `audit_events` or doesn't bypass RLS — closes the silent-chain-fork failure mode (RLS-subjected role would return empty `prev_hash` lookups, every row becoming a new "first" entry without surface).
 - Baseline security headers (ADR-004 §F + OWASP additions): Content-Security-Policy (deny-everything for JSON), Strict-Transport-Security preload, X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (sensors / camera / mic / geolocation / payment / USB denied), Cross-Origin-Resource-Policy same-origin, Cross-Origin-Opener-Policy same-origin, Cache-Control no-store. Emitted outermost via `entry().or_insert()` so future static-route handlers can supply their own per-surface CSP.
 
-#### Web — apps/web SvelteKit skeleton
+#### Web — pending MASH foundations (per ADR-020)
 
-- Bun workspace at the repo root (`apps/*`); Cargo workspace stays separate.
-- `apps/web` SvelteKit 2.63 + Svelte 5.56 + Vite 8 + TypeScript 6, all on current-latest majors. `@sveltejs/adapter-static` with `strict: true` so every route must be prerenderable.
-- Tailwind v4 via `@tailwindcss/vite` (no `tailwind.config.js` in the v4 model); custom-variant for `dark:` follows the same activation paths as our token overrides.
-- `apps/web-ui` shared workspace package per ADR-014 §B; exports tokens + base styles.
-- Design tokens per ADR-014 §C: `tokens.json` as source of truth + JSON Schema for IDE validation, `emit-tokens-css.ts` emitter producing `tokens.css`, CI drift-check gate that re-runs the emitter and fails on diff. The emitter rejects token values containing `}` or `;` at emit time.
-- Base styles: self-hosted IBM Plex Sans + Mono via `@fontsource` (Latin + Latin Extended subsets only — 12 woff2 instead of the 34 the all-subset import would bundle), typography utilities (`flight-academy-h1` through `flight-academy-mono`) on a rem scale for accessibility.
-- First-class dark mode via CSS `light-dark()` (single source of truth per token), activated by `color-scheme` on `<html>` and overridable with `data-theme="dark"` / `data-theme="light"`.
+- `apps/web-ui/tokens/` preserved as design source-of-truth (`tokens.json` + JSON Schema + `tokens.css`); will be consumed by Tailwind `@theme` when the MASH foundations PR lands.
+- SvelteKit skeleton (`apps/web/`, root Bun workspace, `apps/web-ui` scripts + styles, root `package.json` / `bun.lock` / Prettier config, `.github/workflows/web-ci.yml`) removed per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §P. Web surface will be server-rendered by `apps/api` via Maud + HTMX + Alpine + Tailwind v4. Nothing has been released — this prune happens entirely inside `[Unreleased]`.
 
 #### CI / tooling
 
 - `scripts/check-all.sh` orchestrates `cargo audit`, `cargo deny check`, `gitleaks dir`, `typos`, `cargo fmt --check`, `cargo clippy -D warnings`, `shellcheck`, `actionlint` — same set the CI workflows run.
-- CI workflows: `CI` (Rust lint + test on PG 18 service + schema-drift check against committed `crates/flight-academy-db/schema.sql` per ADR-003 §E), `DCO` (inlined sign-off check), `Web CI` (Bun install with cache + prettier `format:check` + `bun audit --audit-level=moderate` + tokens drift check + svelte-check + build), `OpenSSF Scorecard`. All actions SHA-pinned with version-trailer comments.
+- CI workflows: `CI` (Rust lint + test on PG 18 service + schema-drift check against committed `crates/flight-academy-db/schema.sql` per ADR-003 §E), `DCO` (inlined sign-off check), `OpenSSF Scorecard`. All actions SHA-pinned with version-trailer comments. MASH web tooling workflow (Tailwind compile + CSS bundle budget per ADR-020 §O) lands with the MASH foundations PR.
 - Integration test infrastructure: testcontainers-modules + tokio `OnceCell` PG container + `tokio::Mutex` migration lock; per-test fresh database; superuser pool so RLS is bypassed for seeds while tenant-scoped reads exercise the policy.
-- `Dependabot` configured for `cargo`, `npm` at `/apps/web`, GitHub Actions, and Docker (anticipated `deploy/docker/`). Patches grouped per ecosystem; majors come as separate PRs.
+- `Dependabot` configured for `cargo`, GitHub Actions, and Docker (anticipated `deploy/docker/`). Patches grouped per ecosystem; majors come as separate PRs. Web npm watcher is re-added with the MASH foundations PR (Tailwind dev dep per ADR-020 §O).
 
 #### Repository scaffolding (preserved from the original entry)
 

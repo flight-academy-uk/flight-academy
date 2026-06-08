@@ -78,7 +78,7 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
    - [ ] Commits are signed
    - [ ] Tests added or updated
    - [ ] Rust: `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`, `cargo deny check` pass — or run `scripts/check-all.sh` to invoke them in one pass alongside `cargo audit`, `gitleaks`, `typos`, `shellcheck`, and `actionlint`
-   - [ ] Web: `bun run format:check`, `bun run check`, `bun run build`, `bun audit --audit-level=moderate` pass (when touched)
+   - [ ] Web (when MASH foundations land per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O): Tailwind compile + CSS bundle size budget pass
    - [ ] Mobile: `flutter analyze`, `flutter test` pass (when touched, once `apps/mobile` lands)
    - [ ] User-facing changes documented (CHANGELOG `[Unreleased]`)
    - [ ] No telemetry / phone-home introduced
@@ -105,9 +105,9 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
 Current prerequisites (toolchain pinning via `rust-toolchain.toml` will follow once the toolchain decision settles; a `Justfile` will land alongside an end-to-end dev orchestration command):
 
 - Rust 1.83+ (`cargo`, `rustc`, `rustfmt`, `clippy`)
-- Bun 1.3+ (web workspace install, build, format-check, audit)
 - Docker (testcontainers for integration tests; Postgres 18 image)
 - `gitleaks`, `typos`, `shellcheck`, `actionlint`, `cargo-audit`, `cargo-deny` — `scripts/check-all.sh` will tell you which are missing
+- Bun 1.3+ — added back when the MASH foundations PR lands (Tailwind CLI compile per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O); not required today
 - Flutter latest stable (only when `apps/mobile` lands)
 
 What currently runs locally:
@@ -115,8 +115,6 @@ What currently runs locally:
 ```bash
 cargo build --workspace
 cargo test --workspace                              # spins up testcontainers
-bun install                                         # workspace install
-cd apps/web && bun run check && bun run build       # SvelteKit type-check + build
 scripts/check-all.sh                                # mirrors the CI quality gate
 ```
 

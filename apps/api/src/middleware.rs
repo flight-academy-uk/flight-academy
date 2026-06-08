@@ -3,7 +3,8 @@
 //! * `x-request-id` propagation per ADR-004 §B.
 //! * `security_headers` — baseline response headers per ADR-004 §F, with
 //!   CSP shaped for the current JSON-only surface (ADR-015's hash- and
-//!   nonce-based machinery waits for `apps/web`).
+//!   nonce-based machinery waits for the MASH HTML surface served by
+//!   `apps/api` per ADR-020).
 //! * `dev_auth` — walking-skeleton subject extractor; replaced by real
 //!   passwordless auth (ADR-001 §F, ADR-013) when that lands.
 //!
@@ -45,11 +46,12 @@ pub const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 ///
 /// * `Content-Security-Policy` — `default-src 'none'; frame-ancestors 'none';
 ///   base-uri 'none'; form-action 'none'`. ADR-015 §A's HTML-targeted shape
-///   (`default-src 'self'` etc.) only makes sense once `apps/web` ships
-///   static HTML with inline scripts/styles; until then the API surface is
-///   JSON and "deny everything" is correct. The static-route handler will
-///   emit its own per-surface CSP (hash-based for `adapter-static`,
-///   nonce-based for sensitive routes — ADR-015 §B/§C); this layer uses
+///   (`default-src 'self'` etc.) only makes sense once the MASH HTML surface
+///   (Maud handlers in `apps/api`, ADR-020) ships routes with inline
+///   scripts/styles; until then the API surface is JSON and "deny everything"
+///   is correct. Each MASH route handler will emit its own per-surface CSP
+///   (hash-based for prerendered + most SSR, nonce-based for sensitive routes
+///   — ADR-015 §B/§C, refined by ADR-020 §K); this layer uses
 ///   `entry().or_insert()` so that handler-set headers are not clobbered.
 /// * `Strict-Transport-Security` with `preload` — the `.app` TLD is HSTS-
 ///   preloaded at the registry level (ADR-004 §F), so `preload` reflects
@@ -73,7 +75,8 @@ pub const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
 ///   context.
 /// * `Cross-Origin-Resource-Policy: same-origin` — defence against
 ///   Spectre-class cross-origin reads via `<img>`/`<script>` embedding.
-///   The SPA's `fetch()` path already goes through CORS; CORP is the
+///   Same-origin HTMX requests from the MASH HTML surface (ADR-020) and
+///   third-party integrations doing CORS are unaffected; CORP is the
 ///   additional layer that blocks embedding-as-resource.
 /// * `Cross-Origin-Opener-Policy: same-origin` — browsing-context
 ///   isolation. Less directly relevant for non-HTML responses but
@@ -100,9 +103,10 @@ pub async fn security_headers(req: Request, next: Next) -> Response {
     use axum::http::header;
 
     // `or_insert` not `insert`: leaves handler-set values untouched. This
-    // is the seam ADR-015 §B/§C will use when `apps/web` ships static
-    // HTML routes that need their own per-surface CSP, and that
-    // future static-asset handlers will use for long-TTL Cache-Control.
+    // is the seam ADR-015 §B/§C (refined by ADR-020 §K) will use when MASH
+    // HTML handlers in `apps/api` ship routes that need their own per-surface
+    // CSP, and that future static-asset handlers will use for long-TTL
+    // Cache-Control.
     headers
         .entry(header::CONTENT_SECURITY_POLICY)
         .or_insert(HeaderValue::from_static(

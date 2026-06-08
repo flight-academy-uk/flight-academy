@@ -77,9 +77,7 @@ cd flight-academy
 cargo build --workspace
 cargo test --workspace
 
-# Web: install workspace deps, type-check, build
-bun install
-cd apps/web && bun run check && bun run build
+# Web: re-added when MASH foundations land per ADR-020 §O (Tailwind compile)
 
 # Pre-push hygiene gate (mirrors CI: lint, audit, deny, gitleaks, ...)
 scripts/check-all.sh
