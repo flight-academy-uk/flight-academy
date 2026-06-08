@@ -1,8 +1,6 @@
-//! Verifies the MASH HTML landing route (`/`) renders Maud markup,
-//! links the Tailwind-compiled stylesheet and the vendored HTMX bundle,
-//! and that the HTMX fragment endpoint (`/_hx/home/server-id`) returns
-//! a bare Maud fragment with a freshly generated UUID v7 per ADR-020 §A
-//! / §K / §F.
+//! Verifies the MASH HTML landing route (`/`), the HTMX fragment
+//! endpoint (`/_hx/home/server-id`), and the content-hashed
+//! `/static/*` asset surface — per ADR-020 §A / §F / §I / §K.
 //!
 //! No DB needed — the home resource is stateless.
 
@@ -58,7 +56,7 @@ async fn home_returns_html_200() {
     );
     assert!(
         csp.contains("style-src 'self'"),
-        "CSP must allow same-origin stylesheets so /static/app.css loads — got: {csp}",
+        "CSP must allow same-origin stylesheets so the Tailwind bundle loads — got: {csp}",
     );
     assert!(
         csp.contains("script-src 'self'"),
@@ -77,6 +75,33 @@ async fn home_returns_html_200() {
         "no 'unsafe-eval' — the vendored Alpine bundle is the CSP-safe build (@alpinejs/csp), which drops new Function() and works with strict CSP; got: {csp}",
     );
 
+    // Per-route Cache-Control per ADR-020 §I: marketing chrome is
+    // edge-cacheable for an hour with a day of stale-while-revalidate.
+    // The handler-set header must win over the middleware's no-store
+    // default (or_insert semantics).
+    let cache_control = resp
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .expect("home handler must emit Cache-Control")
+        .to_str()
+        .unwrap();
+    assert!(
+        cache_control.contains("public"),
+        "landing must be public-cacheable — got: {cache_control}",
+    );
+    assert!(
+        cache_control.contains("s-maxage=3600"),
+        "landing must be edge-cacheable for an hour per ADR-020 §I — got: {cache_control}",
+    );
+    assert!(
+        cache_control.contains("stale-while-revalidate=86400"),
+        "landing must allow a day of SWR per ADR-020 §I — got: {cache_control}",
+    );
+    assert!(
+        !cache_control.contains("no-store"),
+        "landing must override the middleware no-store default — got: {cache_control}",
+    );
+
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let body = std::str::from_utf8(&bytes).unwrap();
 
@@ -87,17 +112,60 @@ async fn home_returns_html_200() {
         "must be a full HTML document"
     );
     assert!(body.contains("<title>Flight Academy</title>"));
+
+    // Content-hashed CSS link — assert the shape rather than the exact
+    // hash, which shifts whenever the Tailwind output changes. The
+    // hashed URL guarantee (build.rs renames in place) is itself
+    // covered by the unit test in `view::tests`.
     assert!(
-        body.contains(r#"<link rel="stylesheet" href="/static/app.css">"#),
-        "Tailwind-compiled stylesheet must be linked per ADR-020 §E",
+        body.contains(r#"<link rel="stylesheet" href="/static/app-"#),
+        "Tailwind-compiled stylesheet must be linked at a hashed URL per ADR-020 §E + §I",
     );
     assert!(
-        body.contains(r#"src="/static/vendor/htmx.min.js""#),
-        "vendored HTMX must be linked per ADR-020 §F",
+        body.contains(r#"<script src="/static/vendor/htmx-"#),
+        "vendored HTMX must be linked at a hashed URL per ADR-020 §F + §I",
     );
     assert!(
         body.contains(r#"hx-get="/_hx/home/server-id""#),
         "demo button must wire to the fragment endpoint",
+    );
+}
+
+#[tokio::test]
+async fn static_assets_carry_immutable_cache_control() {
+    // ServeDir is wrapped with a `SetResponseHeaderLayer::if_not_present`
+    // that emits `public, max-age=31536000, immutable` on every
+    // `/static/*` response. The URL itself is content-addressed via
+    // the hash in the filename, so a stale CDN entry can never serve
+    // the wrong bytes — `immutable` is correct (ADR-020 §I).
+    //
+    // We do not need a real file on disk to verify the layer is wired:
+    // ServeDir will 404 on an unknown path and the header layer applies
+    // to every response that flows through the static service.
+    let app = flight_academy_api::app_for_test();
+    let req = Request::builder()
+        .uri("/static/does-not-exist.css")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+
+    let cache_control = resp
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .expect("/static/* must emit Cache-Control via the layer")
+        .to_str()
+        .unwrap();
+    assert!(
+        cache_control.contains("public"),
+        "/static/* must be public-cacheable — got: {cache_control}",
+    );
+    assert!(
+        cache_control.contains("max-age=31536000"),
+        "/static/* must be cached for a year per ADR-020 §I — got: {cache_control}",
+    );
+    assert!(
+        cache_control.contains("immutable"),
+        "/static/* URLs are content-hashed → safe to mark immutable per ADR-020 §I — got: {cache_control}",
     );
 }
 
@@ -121,6 +189,20 @@ async fn server_id_fragment_returns_bare_html_with_uuid_v7() {
     assert!(
         content_type.starts_with("text/html"),
         "fragment must be text/html so HTMX swaps it; got {content_type}",
+    );
+
+    // Per ADR-020 §I per-user HTMX swap endpoints inherit the
+    // `Cache-Control: no-store` middleware default — fragments are
+    // not cached and the handler does not override.
+    let cache_control = resp
+        .headers()
+        .get(header::CACHE_CONTROL)
+        .expect("fragment must carry Cache-Control")
+        .to_str()
+        .unwrap();
+    assert!(
+        cache_control.contains("no-store"),
+        "fragment endpoints must inherit no-store per ADR-020 §I — got: {cache_control}",
     );
 
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();

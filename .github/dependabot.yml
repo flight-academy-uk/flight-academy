@@ -41,15 +41,37 @@ updates:
           - "minor"
 
   # ---------------------------------------------------------------------------
-  # Web frontend tooling — re-added when MASH foundations land (ADR-020 §O)
+  # Web frontend tooling — apps/api/package.json (Tailwind CLI + vendored
+  # client bundles), watched as the npm ecosystem because Bun resolves the
+  # same registry per ADR-020 §O.
   # ---------------------------------------------------------------------------
-  # ADR-020 supersedes ADR-014: SvelteKit/`apps/web` removed. The MASH web
-  # surface is server-rendered by `apps/api` (Maud templates compile into the
-  # Rust binary) with vendored HTMX + Alpine on the client and Tailwind v4
-  # compiled at build time via Bun CLI. None of those introduce an npm
-  # lockfile that Dependabot can watch today; the Tailwind dev dependency
-  # arrives in the MASH foundations PR and this block is restored then with
-  # the correct directory + ecosystem scope.
+  # Production runtime stays Rust-only — these are dev dependencies that
+  # `build.rs` consumes at compile time (Tailwind via `bun x @tailwindcss/cli`;
+  # HTMX + extensions + Alpine CSP-safe bundles copied verbatim from
+  # node_modules into static/vendor/ then content-hashed per ADR-020 §I).
+  - package-ecosystem: "npm"
+    directory: "/apps/api"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "ICreateThunder"
+    commit-message:
+      prefix: "chore(deps-web)"
+      include: "scope"
+    labels:
+      - "kind:chore"
+      - "area:deps"
+      - "area:web"
+    groups:
+      web-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - "patch"
+          - "minor"
 
   # ---------------------------------------------------------------------------
   # GitHub Actions workflows

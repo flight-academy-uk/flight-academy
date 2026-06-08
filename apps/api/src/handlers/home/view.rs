@@ -15,6 +15,8 @@
 
 use maud::{DOCTYPE, Markup, html};
 
+use crate::assets;
+
 /// Landing page — Tailwind-styled HTML shell with the title block, a
 /// brief project description, and a small MASH-stack proof-of-life
 /// section that demonstrates HTMX fetching a server-rendered fragment.
@@ -35,15 +37,19 @@ pub fn landing() -> Markup {
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width, initial-scale=1";
                 title { "Flight Academy" }
-                link rel="stylesheet" href="/static/app.css";
+                // Asset URLs come from the content-hashed manifest emitted by
+                // `build.rs` per ADR-020 §I. Touching a source shifts the
+                // hash, shifts the URL, and the `immutable` CDN cache
+                // entry naturally expires (the URL was the cache key).
+                link rel="stylesheet" href=(assets::APP_CSS);
                 // Vendored bundles per ADR-020 §F. `defer` so the HTML
                 // parses before script execution; HTMX activates on
                 // DOMContentLoaded regardless.
-                script src="/static/vendor/htmx.min.js" defer {}
-                script src="/static/vendor/htmx-ext-sse.min.js" defer {}
-                script src="/static/vendor/htmx-ext-response-targets.min.js" defer {}
-                script src="/static/vendor/htmx-ext-preload.min.js" defer {}
-                script src="/static/vendor/alpine.min.js" defer {}
+                script src=(assets::HTMX_JS) defer {}
+                script src=(assets::HTMX_EXT_SSE_JS) defer {}
+                script src=(assets::HTMX_EXT_RESPONSE_TARGETS_JS) defer {}
+                script src=(assets::HTMX_EXT_PRELOAD_JS) defer {}
+                script src=(assets::ALPINE_JS) defer {}
             }
             body
                 class="min-h-screen flex items-center justify-center bg-white text-slate-900"
@@ -110,9 +116,19 @@ mod tests {
             "must be a full HTML document"
         );
         assert!(body.contains("<title>Flight Academy</title>"));
+
+        // Content-hashed CSS link — asserts the shape via the manifest
+        // constant rather than coupling to a specific hash value, since
+        // the hash shifts every time the source changes.
+        let css_link = format!(r#"<link rel="stylesheet" href="{}">"#, assets::APP_CSS);
         assert!(
-            body.contains(r#"<link rel="stylesheet" href="/static/app.css">"#),
-            "Tailwind-compiled stylesheet must be linked per ADR-020 §E",
+            body.contains(&css_link),
+            "Tailwind-compiled stylesheet must be linked per ADR-020 §E + §I\n  expected: {css_link}",
+        );
+        assert!(
+            assets::APP_CSS.starts_with("/static/app-") && assets::APP_CSS.ends_with(".css"),
+            "asset constant must be a content-hashed URL per ADR-020 §I — got {}",
+            assets::APP_CSS,
         );
     }
 
@@ -122,17 +138,23 @@ mod tests {
 
         // Vendored bundles must be referenced — without them HTMX
         // would not initialise and the demo button would 404 on its
-        // hx-get because nothing parses the attribute.
-        for expected in [
-            r#"<script src="/static/vendor/htmx.min.js" defer></script>"#,
-            r#"<script src="/static/vendor/htmx-ext-sse.min.js" defer></script>"#,
-            r#"<script src="/static/vendor/htmx-ext-response-targets.min.js" defer></script>"#,
-            r#"<script src="/static/vendor/htmx-ext-preload.min.js" defer></script>"#,
-            r#"<script src="/static/vendor/alpine.min.js" defer></script>"#,
+        // hx-get because nothing parses the attribute. URLs resolve
+        // through the content-hashed asset manifest.
+        for url in [
+            assets::HTMX_JS,
+            assets::HTMX_EXT_SSE_JS,
+            assets::HTMX_EXT_RESPONSE_TARGETS_JS,
+            assets::HTMX_EXT_PRELOAD_JS,
+            assets::ALPINE_JS,
         ] {
+            let expected = format!(r#"<script src="{url}" defer></script>"#);
             assert!(
-                body.contains(expected),
-                "landing must reference vendored bundle:\n  expected: {expected}\n  body: {body}"
+                body.contains(&expected),
+                "landing must reference vendored bundle:\n  expected: {expected}\n  body: {body}",
+            );
+            assert!(
+                url.starts_with("/static/vendor/"),
+                "vendored asset must live under /static/vendor/ — got {url}",
             );
         }
 

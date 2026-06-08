@@ -55,13 +55,31 @@ const HOME_CSP: &str = "default-src 'none'; \
     base-uri 'none'; \
     form-action 'none'";
 
+/// `Cache-Control` for the landing page per ADR-020 §I — public,
+/// edge-cacheable for an hour, served stale for up to a day while a
+/// fresh copy revalidates in the background. The page is prerendered
+/// marketing chrome with no per-user state today; the asset URLs it
+/// references are themselves content-hashed (`/static/app-<hash>.css`,
+/// etc.), so a tenant-specific brand or copy change shifts the body
+/// bytes and ETag without breaking the cache strategy. The
+/// `security_headers` middleware emits `Cache-Control: no-store` via
+/// `or_insert` for the JSON surface; this handler sets the header
+/// first so the middleware's fallback is skipped.
+const HOME_CACHE_CONTROL: &str = "public, s-maxage=3600, stale-while-revalidate=86400";
+
 /// Render the landing page.
 pub async fn get() -> impl IntoResponse {
     (
-        [(
-            header::CONTENT_SECURITY_POLICY,
-            HeaderValue::from_static(HOME_CSP),
-        )],
+        [
+            (
+                header::CONTENT_SECURITY_POLICY,
+                HeaderValue::from_static(HOME_CSP),
+            ),
+            (
+                header::CACHE_CONTROL,
+                HeaderValue::from_static(HOME_CACHE_CONTROL),
+            ),
+        ],
         view::landing(),
     )
 }
