@@ -541,7 +541,7 @@ decide.
 - UI/UX source of truth: a pre-production design prototype — ~42
   self-contained React/JSX views + a `system.css` design system, produced
   on a design canvas before implementation. Internal artefact kept outside
-  this repository; ported to SvelteKit per ADR-001 §B.
+  this repository; to be mechanically ported to Maud templates per [ADR-020](../architecture/ADR-020-mash-frontend-architecture.md) (supersedes the original SvelteKit destination in [ADR-001 §B](../architecture/ADR-001-platform.md)).
 - [ADR-001 — Platform architecture](../architecture/ADR-001-platform.md)
 - [ADR-002 — Release and deployment](../architecture/ADR-002-release-deployment.md)
 - [ADR-003 — Database migration discipline](../architecture/ADR-003-db-migrations.md)
