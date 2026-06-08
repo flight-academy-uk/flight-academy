@@ -48,7 +48,7 @@ serde_json = "1.0.150"
 sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros"] }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["fs", "request-id", "set-header", "trace"] }
+tower-http = { version = "0.6.11", features = ["fs", "request-id", "set-header", "trace", "compression-br", "compression-gzip", "compression-zstd"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 utoipa = { version = "5.5.0", features = ["axum_extras", "uuid"] }
@@ -70,3 +70,21 @@ tower = { version = "0.5.3", features = ["util"] }
 # workspace-known dependency we already pull in via the audit-chain code,
 # so reusing it keeps the build-deps minimal.
 sha2 = "0.11"
+# Precompress every text asset (CSS + JS) at build time per the
+# `Accept-Encoding`-based negotiation served from both the default
+# `ServeDir` (via `tower-http`'s `.precompressed_br()` /
+# `.precompressed_gzip()`) and the `embedded-static` handler. Brotli at
+# quality 11 + gzip at quality 9 (both maxed) — we compress once and
+# ship forever, so the per-build CPU cost amortises across every cached
+# response. Woff2 files are NOT precompressed: their container is
+# already brotli'd, double-compression inflates.
+brotli = "8.0.3"
+flate2 = "1.1.5"
+# zstd precompression sits at the top of the negotiation priority
+# (`zstd > br > gz > identity`). Chrome 123+ / Firefox 126+ advertise it
+# in `Accept-Encoding`; for clients that don't, the embedded handler
+# and `ServeDir`'s `.precompressed_*()` chain fall through to brotli
+# and then gzip automatically. Quality 22 is `Zstd::Best` — slowest at
+# build but smallest on the wire, same once-and-ship-forever trade-off
+# as brotli q11 above.
+zstd = "0.13.3"

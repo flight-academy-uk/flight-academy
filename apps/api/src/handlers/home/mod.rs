@@ -32,7 +32,13 @@ use axum::{
 ///   `new Function()` and accepts registered component names in
 ///   `x-data` etc., not arbitrary JS expressions — strict CSP holds
 ///   without relaxation (ADR-020 §F / §K).
-/// - `style-src 'self'` — Tailwind-compiled bundle at `/static/app.css`.
+/// - `style-src 'self'` — Tailwind-compiled bundle at `/static/app.css`
+///   plus the generated `fonts.css` carrying the IBM Plex `@font-face`
+///   declarations.
+/// - `font-src 'self'` — IBM Plex Sans + Mono woff2 files served from
+///   `/static/fonts/`. The `@font-face` declarations in `fonts.css`
+///   point at `/static/fonts/{...}-{hash}.woff2`; `font-src` is the
+///   directive that authorises the browser to fetch them.
 /// - `connect-src 'self'` — HTMX issues XHR/fetch back to the origin
 ///   for fragment endpoints (e.g. `/_hx/home/server-id`).
 /// - `frame-ancestors 'none' / base-uri 'none' / form-action 'none'`
@@ -40,9 +46,9 @@ use axum::{
 ///   `<base>`, nor forms.
 ///
 /// Tighter than ADR-015 §A's `default-src 'self'` baseline by design —
-/// the landing page has no images, no fonts, no media, no `<iframe>`,
-/// no `<form>`. Any future grant happens at the per-route layer when a
-/// surface actually needs it.
+/// the landing page has no images, no media, no `<iframe>`, no `<form>`.
+/// Any future grant happens at the per-route layer when a surface
+/// actually needs it.
 ///
 /// Hash-based CSP per ADR-015 §B / ADR-020 §K (covering inline content
 /// hashes for HTMX-driven SSR routes) is still future work; this CSP is
@@ -50,6 +56,7 @@ use axum::{
 const HOME_CSP: &str = "default-src 'none'; \
     script-src 'self'; \
     style-src 'self'; \
+    font-src 'self'; \
     connect-src 'self'; \
     frame-ancestors 'none'; \
     base-uri 'none'; \

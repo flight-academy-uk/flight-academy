@@ -67,6 +67,10 @@ async fn home_returns_html_200() {
         "CSP must allow same-origin XHR so HTMX can fetch the fragment endpoint — got: {csp}",
     );
     assert!(
+        csp.contains("font-src 'self'"),
+        "CSP must allow same-origin font fetches so IBM Plex woff2 loads per ADR-020 §K — got: {csp}",
+    );
+    assert!(
         !csp.contains("'unsafe-inline'"),
         "no 'unsafe-inline' — vendored bundles cover all script needs; got: {csp}",
     );
@@ -122,6 +126,10 @@ async fn home_returns_html_200() {
         "Tailwind-compiled stylesheet must be linked at a hashed URL per ADR-020 §E + §I",
     );
     assert!(
+        body.contains(r#"<link rel="stylesheet" href="/static/fonts-"#),
+        "fonts.css must be linked at a hashed URL per ADR-020 §I + §O",
+    );
+    assert!(
         body.contains(r#"<script src="/static/vendor/htmx-"#),
         "vendored HTMX must be linked at a hashed URL per ADR-020 §F + §I",
     );
@@ -141,6 +149,76 @@ async fn home_returns_html_200() {
 // `static_assets_carry_immutable_cache_control` below. The embedded path
 // has no cwd dependency — `rust-embed` bakes the bytes into the binary at
 // compile time — so it's the variant that can be tested end-to-end here.
+#[cfg(feature = "embedded-static")]
+#[tokio::test]
+async fn embedded_static_negotiates_zstd_then_brotli_then_gzip_then_identity() {
+    // The embedded `/static/*` handler walks `Accept-Encoding` in server
+    // priority order — zstd, then brotli, then gzip, then identity
+    // (ADR-020 §I) — and emits `Content-Encoding` + `Vary:
+    // Accept-Encoding`. Test all four negotiation outcomes against the
+    // same hashed asset URL to lock in the priority order.
+    let asset_url = flight_academy_api::assets::APP_CSS;
+
+    // Client supports zstd + br + gz → server picks zstd (top preference).
+    let resp = fetch_with_accept_encoding(asset_url, "zstd, br, gzip").await;
+    assert_eq!(resp.0, StatusCode::OK);
+    assert_eq!(resp.1, Some("zstd".to_string()));
+    assert_eq!(resp.2.as_deref(), Some("Accept-Encoding"));
+
+    // Client refuses zstd via q=0 → server falls back to brotli.
+    let resp = fetch_with_accept_encoding(asset_url, "zstd;q=0, br, gzip").await;
+    assert_eq!(resp.0, StatusCode::OK);
+    assert_eq!(resp.1, Some("br".to_string()));
+
+    // Client refuses both zstd + br → server falls back to gzip.
+    let resp = fetch_with_accept_encoding(asset_url, "zstd;q=0, br;q=0, gzip").await;
+    assert_eq!(resp.0, StatusCode::OK);
+    assert_eq!(resp.1, Some("gzip".to_string()));
+
+    // Client supports gzip only → server picks gzip.
+    let resp = fetch_with_accept_encoding(asset_url, "gzip").await;
+    assert_eq!(resp.0, StatusCode::OK);
+    assert_eq!(resp.1, Some("gzip".to_string()));
+
+    // No Accept-Encoding → server returns identity (no Content-Encoding).
+    let resp = fetch_with_accept_encoding(asset_url, "").await;
+    assert_eq!(resp.0, StatusCode::OK);
+    assert_eq!(resp.1, None);
+    assert_eq!(
+        resp.2.as_deref(),
+        Some("Accept-Encoding"),
+        "Vary header must be present even on identity responses so a downstream cache keys correctly",
+    );
+}
+
+/// Helper: send a GET with the given `Accept-Encoding` header and
+/// return `(status, content_encoding, vary)`. Pulled out because the
+/// negotiation test makes four near-identical requests.
+#[cfg(feature = "embedded-static")]
+async fn fetch_with_accept_encoding(
+    uri: &str,
+    accept_encoding: &str,
+) -> (StatusCode, Option<String>, Option<String>) {
+    let app = flight_academy_api::app_for_test();
+    let mut req = Request::builder().uri(uri);
+    if !accept_encoding.is_empty() {
+        req = req.header(header::ACCEPT_ENCODING, accept_encoding);
+    }
+    let resp = app.oneshot(req.body(Body::empty()).unwrap()).await.unwrap();
+    let status = resp.status();
+    let ce = resp
+        .headers()
+        .get(header::CONTENT_ENCODING)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    let vary = resp
+        .headers()
+        .get(header::VARY)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    (status, ce, vary)
+}
+
 #[cfg(feature = "embedded-static")]
 #[tokio::test]
 async fn embedded_static_serves_real_app_css_bytes() {
