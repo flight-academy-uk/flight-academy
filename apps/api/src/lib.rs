@@ -66,8 +66,18 @@ fn build(with_dev_auth: bool) -> Built {
     // for `cargo test` the same path resolves because tests don't fetch
     // the static directory. Content-hashed asset URLs and the
     // `embedded-static` feature (rust-embed) land in PR B per ADR-020 §O.
+    // The `/_hx/<resource>/...` prefix marks server-rendered Maud
+    // fragments that HTMX swaps into DOM slots on the originating page.
+    // Separating them from the user-addressable URL space (`/`,
+    // `/tenants/...`) makes the boundary visible — fragments are not
+    // browser entry-points, never bookmarked, and CSP for HTMX swaps is
+    // governed by the parent page's policy per ADR-020 §K.
     let html_routes = OpenApiRouter::new()
         .route("/", axum::routing::get(handlers::home::get))
+        .route(
+            "/_hx/home/server-id",
+            axum::routing::get(handlers::home::server_id),
+        )
         .nest_service("/static", ServeDir::new("apps/api/static"));
 
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
