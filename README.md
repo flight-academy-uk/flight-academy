@@ -24,7 +24,7 @@ Individual pilots may hold accounts independent of any organisation, and may bel
 | Layer | Choice |
 | --- | --- |
 | Backend | Rust + Axum, distroless ARM containers |
-| Web | SvelteKit + bits-ui + Tailwind |
+| Web | Maud + HTMX + Alpine + Tailwind (MASH stack, server-rendered by `apps/api`) |
 | Mobile | Flutter (offline-first) |
 | Database | PostgreSQL via CloudNativePG, row-level security |
 | Objects | MinIO (S3-compatible) |
@@ -32,7 +32,7 @@ Individual pilots may hold accounts independent of any organisation, and may bel
 | Mesh / IDS | Istio ambient + Cilium CNI + Tetragon |
 | Deploy | K3s on AWS EC2 (eu-west-2), Flux + Flagger |
 
-The architectural decision record is at [docs/architecture/ADR-001-platform.md](docs/architecture/ADR-001-platform.md).
+The architectural decision records are at [docs/architecture/](docs/architecture/) — [ADR-001](docs/architecture/ADR-001-platform.md) frames the platform; [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) supersedes the original SvelteKit frontend choice with MASH.
 
 ## Hosted vs self-host
 
@@ -56,9 +56,9 @@ Flight Academy contains no telemetry. No phone-home, no usage analytics, no erro
 
 | Component | State |
 | --- | --- |
-| Architectural decision records | accepted (ADR-001 through ADR-018) |
+| Architectural decision records | accepted (ADR-001 through ADR-020) |
 | Backend API (Rust, Axum) | in active development — HTTP foundation, ABAC primitives, hash-chained audit trail, tenants resource (read + write) |
-| Web (SvelteKit) | in active development — skeleton (Bun workspace, adapter-static, Tailwind v4), design tokens with drift-check, base styles + IBM Plex, first-class dark mode |
+| Web (MASH) | pending — design tokens preserved at `apps/web-ui/tokens/`; MASH foundations (Maud handlers + vendored HTMX/Alpine + Tailwind compile) land next per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §Q |
 | Mobile (Flutter) | not started |
 | Helm chart for K8s self-host | not started |
 | `docker-compose.yaml` for single-host self-host | not started |
