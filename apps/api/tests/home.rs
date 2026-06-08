@@ -39,6 +39,30 @@ async fn home_returns_html_200() {
         "MASH HTML routes must carry the ADR-004 §F floor like the JSON surface",
     );
 
+    // Per-surface CSP from the handler must win over the middleware's
+    // `default-src 'none'` JSON deny-all (the middleware uses `or_insert`,
+    // so handler-set CSPs are preserved). The home page's CSP allows
+    // same-origin stylesheets so /static/app.css can load; everything
+    // else stays denied — matches the no-JS posture per ADR-020 §L.
+    let csp = resp
+        .headers()
+        .get("content-security-policy")
+        .expect("home handler must emit CSP")
+        .to_str()
+        .unwrap();
+    assert!(
+        csp.contains("style-src 'self'"),
+        "CSP must allow same-origin stylesheets so /static/app.css loads — got: {csp}",
+    );
+    assert!(
+        csp.contains("default-src 'none'"),
+        "CSP must default-deny — got: {csp}",
+    );
+    assert!(
+        !csp.contains("script-src"),
+        "no script-src — landing page is no-JS per ADR-020 §L; got: {csp}",
+    );
+
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     let body = std::str::from_utf8(&bytes).unwrap();
 
