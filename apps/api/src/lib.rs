@@ -10,6 +10,7 @@
 //! Handler functions and their wire-shape response types live under
 //! [`handlers`], one module per resource.
 
+pub(crate) mod assets;
 mod error;
 mod handlers;
 mod middleware;
@@ -19,8 +20,11 @@ pub use handlers::audit_events::AuditEventCount;
 pub use handlers::health::HealthResponse;
 pub use handlers::tenants::{TenantDeleteRequest, TenantPatchRequest, TenantResponse};
 
+use axum::http::{HeaderValue, header};
+use tower::ServiceBuilder;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -64,21 +68,37 @@ fn build(with_dev_auth: bool) -> Built {
     // headers). `ServeDir` resolves paths relative to the binary's cwd;
     // for dev with `cargo run` from repo root that's `apps/api/static`,
     // for `cargo test` the same path resolves because tests don't fetch
-    // the static directory. Content-hashed asset URLs and the
-    // `embedded-static` feature (rust-embed) land in PR B per ADR-020 §O.
+    // the static directory. The `embedded-static` feature (rust-embed)
+    // lands alongside IBM Plex / `@theme` tokens per ADR-020 §O.
+    //
     // The `/_hx/<resource>/...` prefix marks server-rendered Maud
     // fragments that HTMX swaps into DOM slots on the originating page.
     // Separating them from the user-addressable URL space (`/`,
     // `/tenants/...`) makes the boundary visible — fragments are not
     // browser entry-points, never bookmarked, and CSP for HTMX swaps is
     // governed by the parent page's policy per ADR-020 §K.
+    //
+    // `/static/*` carries `Cache-Control: public, max-age=31536000,
+    // immutable` per ADR-020 §I — URLs are content-hashed by `build.rs`
+    // (e.g. `/static/app-a1b2c3d4.css`), so any stale cached entry is
+    // always for the right bytes; touching the source shifts the URL.
+    // The header layer applies only to the `/static/*` subtree; the
+    // `if_not_present` semantics let the `security_headers` middleware
+    // skip its `Cache-Control: no-store` default for this route.
+    let immutable_static = ServiceBuilder::new()
+        .layer(SetResponseHeaderLayer::if_not_present(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("public, max-age=31536000, immutable"),
+        ))
+        .service(ServeDir::new("apps/api/static"));
+
     let html_routes = OpenApiRouter::new()
         .route("/", axum::routing::get(handlers::home::get))
         .route(
             "/_hx/home/server-id",
             axum::routing::get(handlers::home::server_id),
         )
-        .nest_service("/static", ServeDir::new("apps/api/static"));
+        .nest_service("/static", immutable_static);
 
     // Layer ordering note (axum::Router::layer wraps each subsequent layer
     // OUTSIDE the previous one): `Propagate` is applied first so it ends up
