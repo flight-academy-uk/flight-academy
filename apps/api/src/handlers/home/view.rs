@@ -41,6 +41,13 @@ pub fn landing() -> Markup {
                 // `build.rs` per ADR-020 §I. Touching a source shifts the
                 // hash, shifts the URL, and the `immutable` CDN cache
                 // entry naturally expires (the URL was the cache key).
+                //
+                // `fonts.css` carries the IBM Plex `@font-face` declarations
+                // (build.rs-emitted with content-hashed woff2 URLs). Linked
+                // before `app.css` so the typography fetch fires alongside
+                // the Tailwind bundle; `font-display: swap` in the @font-face
+                // means fallback text paints immediately either way.
+                link rel="stylesheet" href=(assets::FONTS_CSS);
                 link rel="stylesheet" href=(assets::APP_CSS);
                 // Vendored bundles per ADR-020 §F. `defer` so the HTML
                 // parses before script execution; HTMX activates on
@@ -129,6 +136,18 @@ mod tests {
             assets::APP_CSS.starts_with("/static/app-") && assets::APP_CSS.ends_with(".css"),
             "asset constant must be a content-hashed URL per ADR-020 §I — got {}",
             assets::APP_CSS,
+        );
+
+        // fonts.css carries the IBM Plex @font-face declarations.
+        let fonts_link = format!(r#"<link rel="stylesheet" href="{}">"#, assets::FONTS_CSS);
+        assert!(
+            body.contains(&fonts_link),
+            "fonts.css must be linked so IBM Plex @font-face declarations land per ADR-020 §O\n  expected: {fonts_link}",
+        );
+        assert!(
+            assets::FONTS_CSS.starts_with("/static/fonts-") && assets::FONTS_CSS.ends_with(".css"),
+            "fonts.css URL must be content-hashed — got {}",
+            assets::FONTS_CSS,
         );
     }
 

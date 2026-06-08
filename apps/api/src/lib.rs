@@ -95,8 +95,20 @@ fn build(with_dev_auth: bool) -> Built {
     // The wrapping `SetResponseHeaderLayer::if_not_present` applies
     // uniformly — keeping the cache policy in one place avoids two-paths
     // drift if the immutable URL strategy changes later.
+    //
+    // `Accept-Encoding` content negotiation per ADR-020 §I — server
+    // preference order is zstd > brotli > gzip > identity. `build.rs`
+    // emits `.zst`, `.br`, `.gz` siblings next to each hashed text
+    // asset; `ServeDir` picks them up via `.precompressed_zstd()`,
+    // `.precompressed_br()`, `.precompressed_gzip()` and the embedded
+    // handler walks the same naming scheme manually. The order of the
+    // builder methods matters: tower-http tries them in declaration
+    // order, so zstd first → matches our priority.
     #[cfg(not(feature = "embedded-static"))]
-    let static_inner = ServeDir::new("apps/api/static");
+    let static_inner = ServeDir::new("apps/api/static")
+        .precompressed_zstd()
+        .precompressed_br()
+        .precompressed_gzip();
     #[cfg(feature = "embedded-static")]
     let static_inner = embedded::service();
 

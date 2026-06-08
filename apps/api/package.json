@@ -2,12 +2,14 @@
   "name": "@flight-academy/api-assets",
   "private": true,
   "type": "module",
-  "description": "Dev-only Bun workspace for apps/api: provides the Tailwind v4 CLI (compiles styles/app.css into static/app.css at build time) plus the vendored MASH JS dependencies (HTMX 2.x + extensions, Alpine.js 3.x CSP-safe build) which `build.rs` copies from node_modules into static/vendor/. None of these reach the production runtime — they exist only so the Rust binary can serve their distributed minified bundles to browsers (ADR-020 §O / §F). Alpine is pinned to `@alpinejs/csp` deliberately — the CSP-safe build drops `new Function()` so strict CSP needs neither `'unsafe-inline'` nor `'unsafe-eval'`. Trade-off: `x-data` etc. accept registered component names, not inline JS expressions.",
+  "description": "Dev-only Bun workspace for apps/api: provides the Tailwind v4 CLI (compiles styles/app.css into static/app.css at build time), the vendored MASH JS dependencies (HTMX 2.x + extensions, Alpine.js 3.x CSP-safe build), and IBM Plex Sans + Mono woff2 typography (Latin + Latin Extended subsets) which `build.rs` copies from node_modules into static/{vendor,fonts}/. None of these reach the production runtime — they exist only so the Rust binary can serve their distributed bundles + fonts to browsers (ADR-020 §O / §F). Alpine is pinned to `@alpinejs/csp` deliberately — the CSP-safe build drops `new Function()` so strict CSP needs neither `'unsafe-inline'` nor `'unsafe-eval'`. Trade-off: `x-data` etc. accept registered component names, not inline JS expressions.",
   "scripts": {
     "build:css": "tailwindcss -i ./styles/app.css -o ./static/app.css --minify"
   },
   "devDependencies": {
     "@alpinejs/csp": "3.15.12",
+    "@fontsource/ibm-plex-mono": "5.2.7",
+    "@fontsource/ibm-plex-sans": "5.2.8",
     "@tailwindcss/cli": "4.3.0",
     "htmx-ext-preload": "2.1.2",
     "htmx-ext-response-targets": "2.0.4",
