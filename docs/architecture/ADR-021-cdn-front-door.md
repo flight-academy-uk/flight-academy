@@ -6,17 +6,17 @@
 | **Date** | 2026-06-11 |
 | **Deciders** | @ICreateThunder |
 | **Tags** | infra, cdn, edge, runtime, interfaces, security |
-| **Supersedes** | (none — refines [ADR-001 §A](ADR-001-platform.md), [ADR-019 §H](ADR-019-white-label-runtime.md), [ADR-020 §H](ADR-020-mash-frontend-architecture.md)) |
+| **Supersedes** | (none — refines [ADR-001 §A](ADR-001-platform.md), [ADR-019 §B](ADR-019-white-label-runtime.md), [ADR-020 §H](ADR-020-mash-frontend-architecture.md)) |
 
 ## Context
 
-[ADR-001 §A](ADR-001-platform.md), [ADR-019 §H](ADR-019-white-label-runtime.md), and [ADR-020 §H](ADR-020-mash-frontend-architecture.md) name CloudFront for the hosted-data-path CDN and name vendor-specific origin primitives (a particular CDN, a particular load balancer, a particular object-store SKU, a particular compute substrate). Two refinements emerge as the cluster onboarding work firms up:
+[ADR-001 §A](ADR-001-platform.md), [ADR-019 §B](ADR-019-white-label-runtime.md), and [ADR-020 §H](ADR-020-mash-frontend-architecture.md) name CloudFront for the hosted-data-path CDN and name vendor-specific origin primitives (a particular CDN, a particular load balancer, a particular object-store SKU, a particular compute substrate). Two refinements emerge as the cluster onboarding work firms up:
 
 1. **Edge: Cloudflare fits FA's posture better than CloudFront.** Service quality is the load-bearing concern — Cloudflare's L3/L4 DDoS absorption is materially better than typical cloud-provider default-tier DDoS, and the paid-tier capability ceiling (Super Bot Fight Mode, expanded rate-limit rule count, Cache-Tag granularity, managed challenge tuning) is higher in shape than cloud-provider WAF stacks. Cost structure is also more predictable than CloudFront's variable-egress-plus-per-rule-WAF model. Integration symmetry with Cloudflare DNS removes multi-vendor edge coordination.
 
 2. **Origin: the runtime interfaces are what's architecturally load-bearing, not the cloud vendor.** FA's substrate is defined by a small set of named interfaces — already specified across ADR-001 §A and ADR-004 — and any provider satisfying them is interchangeable from the application's perspective. Specific provider selection (which cloud, which dedicated host, which region) is operational, not architectural, and lives in infra-repo runbooks.
 
-[ADR-019 §H](ADR-019-white-label-runtime.md) requires the edge to forward 103 Early Hints unchanged for the brand-asset preload mechanism — Cloudflare does; CloudFront's support is partial. Aviation-safety surfaces (magic-link, MOR submission) need real, not nominal, DDoS protection at the floor.
+[ADR-019 §B](ADR-019-white-label-runtime.md) requires the edge to forward 103 Early Hints unchanged for the brand-asset preload mechanism — Cloudflare does; CloudFront's support is partial. Aviation-safety surfaces (magic-link, MOR submission) need real, not nominal, DDoS protection at the floor.
 
 Forces: protect aviation-safety surfaces with real not nominal DDoS protection ([CODE_OF_ETHICS.md](../../CODE_OF_ETHICS.md) instrument 28); restraint on multi-vendor edge configurations (35–36); decouple architecture from vendor lock-in by naming interfaces rather than products (24 — no pretence; the interfaces are stable, the provider question genuinely reduces to operational fit).
 
@@ -45,7 +45,7 @@ Implementation details that follow — wildcard cert issuance, edge security-gro
 - **DDoS protection is real, not nominal.** Cloudflare's free-tier L3/L4 absorption genuinely exceeds typical cloud-provider default-tier DDoS.
 - **Capability ceiling is higher under one vendor.** Super Bot Fight Mode, Cache-Tag purge, expanded rate-limit rules, managed challenge — capabilities cloud-provider WAF + default-DDoS don't match in shape.
 - **One edge surface to operate.** Cache policy, rate-limit rules, WAF tuning, 103 forwarding all live in one console; one set of credentials, one runbook.
-- **103 Early Hints works.** [ADR-019 §H](ADR-019-white-label-runtime.md) brand-asset preload is supported without caveat.
+- **103 Early Hints works.** [ADR-019 §B](ADR-019-white-label-runtime.md) brand-asset preload is supported without caveat.
 - **Cost structure is predictable.** Free tier covers typical v0.1 traffic; cost concerns do not gate decisions.
 - **Origin is vendor-portable.** The cluster can move between cloud providers, between cloud and dedicated host, or between regions without application-code changes. The interface contract is what FA writes against; the vendor is what the infra repo selects.
 - **Marketing pages, app pages, and API endpoints share the same edge** without coordination across providers.
@@ -84,7 +84,7 @@ Rejected — DDoS protection alone justifies an edge.
 
 ## References
 
-- Refines [ADR-001 §A](ADR-001-platform.md), [ADR-019 §H](ADR-019-white-label-runtime.md), [ADR-020 §H](ADR-020-mash-frontend-architecture.md) — CDN layer + vendor-specific origin references reinterpreted as interface instances.
+- Refines [ADR-001 §A](ADR-001-platform.md), [ADR-019 §B](ADR-019-white-label-runtime.md), [ADR-020 §H](ADR-020-mash-frontend-architecture.md) — CDN layer + vendor-specific origin references reinterpreted as interface instances.
 - Composes with [ADR-002 §D/§E](ADR-002-release-deployment.md) — Flux + Flagger + SOPS pattern is interface-stable across providers.
 - Composes with [ADR-004 §A/§B](ADR-004-defence-in-depth.md) — circuit breaker + rate-limiting layered at Cloudflare edge with in-cluster `tower_governor` as defence in depth.
 - Cloudflare 103 Early Hints support — <https://developers.cloudflare.com/cache/advanced-configuration/early-hints/>.
