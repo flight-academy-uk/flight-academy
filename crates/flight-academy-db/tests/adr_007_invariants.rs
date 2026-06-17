@@ -186,16 +186,17 @@ async fn check_watermark_index(pool: &sqlx::PgPool, table: &str) -> Result<(), S
     // (resource that IS the tenant — e.g. `tenants`) or
     // `(<scope>, updated_at, id)` (resource owned by a tenant/user).
     //
-    // We match on the indexdef text containing `(updated_at, id)` either as
-    // the whole column list or as the trailing two columns. That covers
-    // both shapes without enforcing a specific scope column name (the
-    // domain has both `tenant_id` and `user_id` scopes).
+    // We match `updated_at, id)` as the trailing suffix of the indexdef
+    // column list. The leading `(` is intentionally NOT part of the
+    // pattern — anchoring on it would reject `(tenant_id, updated_at, id)`
+    // for tenant-scoped resources (the `(` there precedes `tenant_id`,
+    // not `updated_at`). Both 2-col and 3-col shapes pass.
     let has_index: Option<bool> = sqlx::query_scalar(
         "SELECT EXISTS (
             SELECT 1 FROM pg_indexes
              WHERE schemaname = 'public'
                AND tablename  = $1
-               AND indexdef ~ '\\(updated_at, id\\)\\s*(WHERE|$)'
+               AND indexdef ~ 'updated_at, id\\)\\s*(WHERE|$)'
          )",
     )
     .bind(table)
