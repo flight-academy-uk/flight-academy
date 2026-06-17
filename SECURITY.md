@@ -101,7 +101,7 @@ A detailed threat model will live at [docs/security/threat-model.md](docs/securi
 - **Multi-tenancy** — assume one tenant attempts to read or modify another tenant's data. Defence: PostgreSQL row-level security + ABAC at the application layer + database role separation.
 - **Credential compromise** — assume a maintainer's GitHub credentials are stolen. Defence: org-wide 2FA, signed commits, branch protection rulesets, no long-lived secrets in CI, OIDC for cloud access.
 - **Supply chain** — assume an upstream dependency is malicious or compromised. Defence: `cargo-deny` allowlist, `cargo-audit` on every PR, CodeQL semantic analysis, SBOM published per release, container signatures via cosign keyless via Sigstore.
-- **Hosted service** — assume hosting infrastructure is hostile. Defence: encryption at rest with per-tenant data-encryption keys (envelope encryption with KMS-wrapped DEKs), data residency in eu-west-2, audit logging of every privileged action, crypto-shredding as a GDPR erasure backstop.
+- **Hosted service** — assume hosting infrastructure is hostile. Defence: encryption at rest with per-tenant data-encryption keys (envelope encryption with KMS-wrapped DEKs), EU data residency, audit logging of every privileged action, crypto-shredding as a GDPR erasure backstop.
 - **Self-host operator error** — assume operators will leave defaults insecure. Defence: secure-by-default configuration, refuse to start in unsafe modes, document every meaningful knob.
 
 ## No telemetry
