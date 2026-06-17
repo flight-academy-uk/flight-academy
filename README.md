@@ -30,9 +30,9 @@ Individual pilots may hold accounts independent of any organisation, and may bel
 | Objects | MinIO (S3-compatible) |
 | Auth | Passwordless — magic link, passkeys, push |
 | Mesh / IDS | Istio ambient + Cilium CNI + Tetragon |
-| Deploy | K3s on AWS EC2 (eu-west-2), Flux + Flagger |
+| Deploy | K3s satisfying the ADR-021 interface contract (Cilium CNI, Istio ambient, CNPG, S3-compatible object store), Cloudflare edge, Flux + Flagger |
 
-The architectural decision records are at [docs/architecture/](docs/architecture/) — [ADR-001](docs/architecture/ADR-001-platform.md) frames the platform; [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) supersedes the original SvelteKit frontend choice with MASH.
+The architectural decision records are at [docs/architecture/](docs/architecture/) — [ADR-001](docs/architecture/ADR-001-platform.md) frames the platform; [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) supersedes the original SvelteKit frontend choice with MASH; [ADR-021](docs/architecture/ADR-021-cdn-front-door.md) refines ADR-001 §A's origin substrate as an interface contract independent of cloud vendor.
 
 ## Hosted vs self-host
 
@@ -43,7 +43,7 @@ The same code, two ways to consume:
 | Price | Per-tenant subscription | Free under AGPLv3 |
 | Operations | We run it | You run it |
 | Updates | Continuous | When you upgrade |
-| Data residency | UK (eu-west-2) | Wherever you deploy |
+| Data residency | EU (UK CAA-compatible under UK adequacy decision) | Wherever you deploy |
 | Support | Direct | Community |
 
 **No feature gating.** Self-hosters receive the complete product. The difference is operational, not functional.
