@@ -10,15 +10,16 @@
 //! ship; the active default is operator-selectable via the
 //! `FA_DEFAULT_AEAD` environment variable per ADR-022 §E.
 
-// `aead = "0.5"` still exposes `GenericArray::from_slice` as the
-// canonical way to construct nonces; the deprecation warning is for a
-// future generic-array 0.x → 1.x migration upstream, not actionable in
-// this crate.
-#![allow(deprecated)]
-
 mod chacha;
 mod gcm;
 mod gcm_siv;
+
+// The `#![allow(deprecated)]` lives in each sub-module file because
+// inner attributes are file-scoped and do not propagate from mod.rs
+// into the child modules — the sub-module attributes are what
+// actually suppress the `GenericArray::from_slice` deprecation
+// warning emitted by the `aead = "0.5"` family. See chacha.rs,
+// gcm.rs, gcm_siv.rs.
 
 use crate::error::{StoreError, StoreResult};
 use rand_core::{OsRng, RngCore};

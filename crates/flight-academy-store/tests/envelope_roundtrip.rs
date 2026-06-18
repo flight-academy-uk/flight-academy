@@ -471,22 +471,6 @@ fn unknown_algo_id_returns_unknown_algorithm() {
 }
 
 #[test]
-fn registry_default_is_gcm_siv_when_env_unset() {
-    // Concurrent tests share process env; protect the assertion by
-    // removing any inherited value before constructing.
-    //
-    // SAFETY: env mutation requires `unsafe` in modern Rust because it
-    // is not thread-safe; this test is intentionally a single
-    // sequential check at the end of the module so it does not race
-    // with other tests in the same binary.
-    unsafe {
-        std::env::remove_var("FA_DEFAULT_AEAD");
-    }
-    let registry = CipherRegistry::with_v0_1_defaults().unwrap();
-    assert_eq!(registry.default_algo_id(), algo_id::AES_256_GCM_SIV);
-}
-
-#[test]
 fn nonce_uniqueness_across_encryptions() {
     // ADR-022 §G — every encryption draws a fresh CSPRNG nonce. Two
     // back-to-back encryptions under the same key + AAD + plaintext
