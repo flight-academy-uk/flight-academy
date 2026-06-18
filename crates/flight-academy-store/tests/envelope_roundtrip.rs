@@ -171,6 +171,10 @@ fn header_version_tampering_fails_decrypt() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"data", &aad.to_bytes()).unwrap();
 
+    // CodeQL false positive: this is not a nonce — the byte is a
+    // negative-path mutation of the envelope's `version` header to
+    // verify rejection. Real nonces come from `OsRng` in
+    // `Envelope::encrypt` per ADR-022 §G.
     envelope[0] = 0x02; // bump version
 
     let err = Envelope::decrypt(
@@ -195,6 +199,9 @@ fn header_algo_id_tampering_fails_decrypt() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"data", &aad.to_bytes()).unwrap();
 
+    // CodeQL false positive: this is not a nonce — the byte is the
+    // envelope's algo_id header being mutated to test the AAD-bound
+    // tag check (see §C). Real nonces come from `OsRng`.
     envelope[1] = algo_id::CHACHA20_POLY1305;
 
     let err = Envelope::decrypt(
@@ -215,6 +222,10 @@ fn header_algo_id_sentinel_rejected() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"data", &aad.to_bytes()).unwrap();
 
+    // CodeQL false positive on both sentinel writes below: these are
+    // not nonces — they are reserved algo_id sentinels (`0x00` and
+    // `0xFF`) per ADR-022 §A, written into the envelope's algo_id
+    // header byte to verify the parser rejects them.
     envelope[1] = 0x00;
     let err = Envelope::decrypt(
         &registry,
@@ -329,7 +340,9 @@ fn ciphertext_byte_flip_fails_decrypt() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"payload", &aad.to_bytes()).unwrap();
 
-    // Flip a byte well past the header into the ciphertext body.
+    // CodeQL false positive: the XOR mask is not a nonce — it bit-flips
+    // a byte in the ciphertext body to verify the AEAD tag rejects
+    // tampered ciphertext. Real nonces come from `OsRng`.
     let target = envelope.len() - 5;
     envelope[target] ^= 0x01;
 
@@ -405,6 +418,9 @@ fn out_of_range_nonce_len_rejected() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"data", &aad.to_bytes()).unwrap();
 
+    // CodeQL false positive: this is not a nonce — the byte is the
+    // envelope's `nonce_len` header being mutated to a below-`MIN_NONCE_LEN`
+    // value to verify the bounds check rejects it.
     envelope[2] = 11; // below MIN_NONCE_LEN
     let err = Envelope::decrypt(
         &registry,
@@ -415,6 +431,8 @@ fn out_of_range_nonce_len_rejected() {
     .expect_err("nonce_len below 12 should fail");
     assert!(matches!(err, StoreError::Envelope { reason } if reason.contains("nonce_len")));
 
+    // CodeQL false positive: same shape as above — the byte is the
+    // `nonce_len` header at the upper bound.
     envelope[2] = 33; // above MAX_NONCE_LEN
     let err = Envelope::decrypt(
         &registry,
@@ -434,7 +452,10 @@ fn unknown_algo_id_returns_unknown_algorithm() {
     let mut envelope =
         Envelope::encrypt(registry.default_cipher(), &key, b"data", &aad.to_bytes()).unwrap();
 
-    // 0x07 is unused / reserved per ADR-022 §A but not a sentinel.
+    // CodeQL false positive: this is not a nonce — the byte is the
+    // envelope's algo_id header set to a reserved-but-unregistered
+    // value (`0x07` per ADR-022 §A) to verify the registry returns
+    // `UnknownAlgorithm`. Real nonces come from `OsRng`.
     envelope[1] = 0x07;
     let err = Envelope::decrypt(
         &registry,
