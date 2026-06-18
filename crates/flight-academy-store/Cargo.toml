@@ -5,3 +5,56 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+
+[dependencies]
+# AEAD trait + 3 impls per ADR-022 §A.
+# Stable releases of the RustCrypto 0.10/0.11 family — released 2022-2023,
+# extensively used (Signal-rs, age, libsodium-rs, many production stacks).
+# Pre-release 0.11/0.12 variants exist but are not yet stabilised; we
+# track them via Dependabot but stay on stable releases per supply-chain
+# hygiene (ADR-016, ADR-018 pattern).
+#
+# Internal-key zeroization in these crates is handled via the
+# transitive `aes` block-cipher crate's `Zeroize` impl on `Key`; the
+# 0.10/0.11 line does not expose a user-controlled `zeroize` feature
+# flag. Our application-layer zeroize (Dek, KeyProvider.master, file
+# buffer, JSON plaintext, decrypt output) covers the surfaces under
+# our control.
+aead = "0.5.2"
+aes-gcm = "0.10.3"
+aes-gcm-siv = "0.11.1"
+chacha20poly1305 = "0.10.1"
+
+# Key derivation per ADR-001 §D + ADR-012 §A — HKDF-SHA256 derives
+# per-(record_kind, controller) DEKs from the master KEK.
+hkdf = "0.12.4"
+sha2 = "0.10.8"
+
+# Zeroize-on-drop of long-lived key material per defence-in-depth on
+# memory-disclosure threat (process core dumps, kernel paging, host
+# memory snapshots). The `derive` feature enables the `Zeroize` /
+# `ZeroizeOnDrop` proc-macros so struct fields zeroize automatically.
+zeroize = { version = "1.8.1", features = ["derive"] }
+
+# Constant-time comparison + CSPRNG. rand_core 0.6 matches what the AEAD
+# 0.10/0.11 family uses internally; avoids a duplicate-dep warning in
+# cargo-deny.
+rand_core = { version = "0.6.4", features = ["std"] }
+subtle = "2.6.1"
+
+# Serde + JSON for EncryptedJson wrapper.
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+
+# Error handling per feedback_error_style — derive_more From impls + ?
+# operator throughout, no scattered map_err.
+derive_more = { version = "2.1.1", features = ["from", "display"] }
+
+# UUID for controller identity per ADR-012 §A (tenant_id / user_id).
+uuid = { version = "1.23.2", features = ["serde"] }
+
+# Intra-workspace
+flight-academy-core = { version = "0.1.0", path = "../flight-academy-core" }
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
