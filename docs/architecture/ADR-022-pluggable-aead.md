@@ -12,7 +12,7 @@
 
 [ADR-001 §D](ADR-001-platform.md) specified AES-256-GCM as the column-level AEAD for envelope encryption. Three forces push us to broaden that choice as Slice C2 lands:
 
-1. **Nonce discipline.** AES-256-GCM's 96-bit nonce must be unique per key for the lifetime of that key — reuse is catastrophic (full key disclosure). The discipline is tractable but is one more invariant the application must defend, and a per-row encrypted column generates many writes per key. AES-256-GCM-SIV (RFC 8452) is nonce-misuse-resistant — accidental reuse leaks only "these two plaintexts were equal," not the key. The roughly 10% performance cost is negligible at our write volume.
+1. **Nonce discipline.** AES-256-GCM's 96-bit nonce must be unique per key for the lifetime of that key — reuse is catastrophic (authentication-key recovery via GHASH polynomial extraction, enabling forgery of any message under the key, plus plaintext disclosure of the two colliding messages). The discipline is tractable but is one more invariant the application must defend, and a per-row encrypted column generates many writes per key. AES-256-GCM-SIV (RFC 8452) is nonce-misuse-resistant — accidental reuse leaks only "these two plaintexts were equal," not the key. The roughly 10% performance cost is negligible at our write volume.
 
 2. **Software performance on diverse architectures.** AES-256-GCM is hardware-accelerated where AES-NI is available (Hetzner-class x86_64; recent ARMv8 with crypto extensions). Self-host operators may deploy on older ARM, RISC-V, or other architectures without crypto acceleration. ChaCha20-Poly1305 is software-fast everywhere — independent of CPU crypto extensions.
 
@@ -62,7 +62,7 @@ Every encrypted value carries a self-describing header so reads dispatch the rig
 - **`nonce`** — raw nonce bytes for the named algorithm.
 - **`ciphertext || auth_tag`** — algorithm output (the AEAD impl handles tag placement internally; we treat the suffix as opaque).
 
-The header is **not** itself authenticated by the AEAD tag (it's outside the AEAD ciphertext). Tampering with the header changes which algorithm decryption uses; integrity is preserved because the tag verification fails on algorithm/key mismatch. The header is bound to the AEAD via the AAD parameter (§C) so a header swap fails authentication.
+The header is not inside the AEAD ciphertext, but its bytes are bound to the AEAD via the AAD parameter (§C), so any header tampering causes tag verification to fail.
 
 The format is binary, not hex/base64-encoded — it lives in `bytea` columns and serialises as `\x…` for psql display. Wrapper types (`EncryptedString`, `EncryptedJson`) handle the bytea round-trip transparently.
 

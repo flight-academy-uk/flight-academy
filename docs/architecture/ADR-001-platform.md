@@ -117,6 +117,8 @@ We do not adopt Cedar, Open Policy Agent, or Casbin at this stage. Those are app
 
 ### D. Encryption at rest — Envelope encryption (DEK + KEK), per-tenant
 
+> **Refined by [ADR-022](ADR-022-pluggable-aead.md)** — AEAD algorithm choice is now pluggable; AES-256-GCM-SIV is the default for new writes; ChaCha20-Poly1305 and AES-256-GCM also ship for operator selection and forward migration. AES-256-GCM remains in force for any ciphertext written under §D as originally specified. The envelope-encryption posture (DEK + KEK, per-tenant, crypto-shred) is unchanged.
+
 **Decision: Three-layer encryption — CNPG disk-level + per-tenant column-level AEAD via envelope encryption (DEK wrapped by KEK in KMS) + pgcrypto where searchable-blind columns are needed. GDPR right-to-erasure backed by crypto-shredding of the per-tenant DEK.**
 
 Sensitive columns — medical certificate details, address, passport number, safety occurrence reporter identity — are encrypted with AES-256-GCM using a Data Encryption Key (DEK). For tenant-owned data (a school's fleet records, an airfield's PPR submissions, etc.) the DEK is per-tenant. For user-owned data (an individual pilot's personal logbook, medicals, ratings — irrespective of any tenant membership) the DEK is per-user. The DEK itself is encrypted by a Key Encryption Key (KEK) held in AWS KMS, age (for self-hosters who prefer file-based key management), or SOPS (for the development environment).
