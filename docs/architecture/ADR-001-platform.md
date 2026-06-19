@@ -118,6 +118,8 @@ We do not adopt Cedar, Open Policy Agent, or Casbin at this stage. Those are app
 ### D. Encryption at rest — Envelope encryption (DEK + KEK), per-tenant
 
 > **Refined by [ADR-022](ADR-022-pluggable-aead.md)** — AEAD algorithm choice is now pluggable; AES-256-GCM-SIV is the default for new writes; ChaCha20-Poly1305 and AES-256-GCM also ship for operator selection and forward migration. AES-256-GCM remains in force for any ciphertext written under §D as originally specified. The envelope-encryption posture (DEK + KEK, per-tenant, crypto-shred) is unchanged.
+>
+> **Refined by [ADR-023](ADR-023-dek-lifecycle-rotation.md)** — the single `tenants.dek_wrapped` / `users.dek_wrapped` column is replaced by `tenant_dek_wrappings` / `user_dek_wrappings` tables keyed by `(owner, record_kind, dek_version)`. Versioning supports per-controller DEK rotation as INSERT-new + UPDATE-retire + chunked sweep + DELETE-shred; KEK rotation rewraps the small wrapping rows with data untouched. ON DELETE CASCADE from the owner row preserves §D's crypto-shred property — erasing the controller atomically shreds every DEK row. The envelope-encryption posture (DEK + KEK, per-controller, crypto-shred) is unchanged.
 
 **Decision: Three-layer encryption — CNPG disk-level + per-tenant column-level AEAD via envelope encryption (DEK wrapped by KEK in KMS) + pgcrypto where searchable-blind columns are needed. GDPR right-to-erasure backed by crypto-shredding of the per-tenant DEK.**
 
