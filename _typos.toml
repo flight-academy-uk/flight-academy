@@ -8,3 +8,7 @@
 # Aviation acronyms (real abbreviations, not typos of common words):
 # MOR — Mandatory Occurrence Report (EU 376/2014, CAP 382).
 mor = "mor"
+# Vendor / product names with capitalised internal substrings that look
+# like typos. `extend-words` matches the substring typos flags
+# (`Hashi` inside `HashiCorp`), not the full identifier.
+Hashi = "Hashi"

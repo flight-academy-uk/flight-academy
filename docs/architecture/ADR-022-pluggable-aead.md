@@ -47,6 +47,8 @@ All three v0.1 algorithms use 256-bit keys and produce 128-bit authentication ta
 
 ### B. Ciphertext envelope format
 
+> **Refined by [ADR-023 §B](ADR-023-dek-lifecycle-rotation.md)** — `ENVELOPE_VERSION` bumps from `0x01` to `0x02` to carry a 4-byte `dek_version` (big-endian `u32`) after `algo_id`. AAD per §C extends to include the four `dek_version` bytes. The §A `algo_id` dispatch and per-ciphertext self-describing header property are unchanged. No production data exists under `0x01`; the bump is a hard cut.
+
 Every encrypted value carries a self-describing header so reads dispatch the right algorithm without out-of-band coordination.
 
 ```
