@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| **Status** | Proposed |
+| **Status** | Accepted |
 | **Date** | 2026-06-19 |
 | **Deciders** | @ICreateThunder |
 | **Tags** | crypto, encryption, dek, kek, rotation, crypto-shred, gdpr |
@@ -464,12 +464,15 @@ as part of the single binary's background task surface.
 - **Audit emissions are inside the rotation transaction.** Ensures
   atomicity but bounds the transaction's external timing — audit
   insertion is fast (local DML) so this is acceptable.
-- **OpenBao integration** ([[openbao-cluster-queue]]) **composes
-  naturally.** A `BaoKmsClient` impl of `KeyProvider` performs
-  Transit-engine `encrypt`/`decrypt` for the wrap/unwrap; the on-disk
-  envelope format is unchanged. Vault's native key rotation (`rewrap`)
-  maps to §E3 KEK rotation; `rotate_dek` (§E1) is an application-level
-  operation orthogonal to Vault key versions.
+- **OpenBao integration composes naturally** with the trait shape. A
+  future `BaoKmsClient` impl of `KeyProvider` performs Transit-engine
+  `encrypt`/`decrypt` for the wrap/unwrap; the on-disk envelope format
+  is unchanged. Vault's native key rotation (`rewrap`) maps to §E3 KEK
+  rotation; `rotate_dek` (§E1) is an application-level operation
+  orthogonal to Vault key versions. (This is the same coexistence note
+  ADR-022's §G Neutral makes for the AEAD side; whether to introduce
+  the cluster-level OpenBao operator is tracked as a deferred
+  infrastructure decision.)
 
 ## Alternatives considered
 
