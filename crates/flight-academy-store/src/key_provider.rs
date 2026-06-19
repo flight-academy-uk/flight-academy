@@ -117,7 +117,7 @@ impl std::fmt::Debug for Dek {
 /// storage row's metadata rather than in this byte stream — at v0.1
 /// only `aes-256-gcm-siv` (algo_id `0x01`) wraps DEKs.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WrappedDek(pub Vec<u8>);
+pub struct WrappedDek(Vec<u8>);
 
 impl WrappedDek {
     pub fn as_bytes(&self) -> &[u8] {
@@ -126,6 +126,14 @@ impl WrappedDek {
 
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         Self(bytes)
+    }
+
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    fn split_at_nonce(&self, nonce_size: usize) -> (&[u8], &[u8]) {
+        self.0.split_at(nonce_size)
     }
 }
 
@@ -336,12 +344,12 @@ impl InMemoryKeyProvider {
     ) -> StoreResult<Dek> {
         let cipher = AesGcmSiv256;
         let nonce_size = cipher.nonce_size();
-        if wrapped.0.len() < nonce_size {
+        if wrapped.len() < nonce_size {
             return Err(StoreError::Envelope {
                 reason: "wrapped DEK shorter than nonce length",
             });
         }
-        let (nonce, ct) = wrapped.0.split_at(nonce_size);
+        let (nonce, ct) = wrapped.split_at_nonce(nonce_size);
         let aad = Self::wrap_aad(controller, record_kind, version);
         let pt = Zeroizing::new(cipher.decrypt(&self.master.0, nonce, &aad, ct)?);
         if pt.len() != 32 {

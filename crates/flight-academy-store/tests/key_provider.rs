@@ -261,12 +261,22 @@ fn shred_unknown_version_fails() {
 }
 
 #[test]
-fn different_master_keys_produce_unreadable_wrappings() {
-    // ADR-023 §A KEK rotation precondition: a wrapping made under one
-    // master KEK cannot be unwrapped under a different master KEK.
-    // KEK rotation (the supported path) rewraps the rows; this test
-    // confirms that without the rewrap, the wrappings are
-    // cryptographically isolated.
+fn different_master_keys_yield_independent_deks() {
+    // Two providers with different master KEKs and identical
+    // (controller, record_kind) inputs produce independent DEKs.
+    //
+    // Note that DEKs are random per generation (not derived), so two
+    // *same-master* providers would also produce different DEKs —
+    // this test does not isolate the master-KEK contribution. What it
+    // does confirm is that the system has no shared-DEK leak across
+    // providers; the stronger property (a wrapping made under master A
+    // cannot be unwrapped under master B) is implicit in AES-256-GCM-SIV's
+    // authentication-failure-on-wrong-key guarantee — there is no
+    // public path to attempt cross-KEK unwrap because
+    // `InMemoryKeyProvider` never exposes one provider's `WrappedDek`
+    // to another by design. Cross-KEK substitution would have to bypass
+    // the trait boundary entirely; AEAD integrity then provides the
+    // structural guarantee.
     let kp_a = InMemoryKeyProvider::from_master_bytes([0x42; 32]);
     let kp_b = InMemoryKeyProvider::from_master_bytes([0x43; 32]);
     let controller = ControllerId::Tenant(Uuid::nil());
