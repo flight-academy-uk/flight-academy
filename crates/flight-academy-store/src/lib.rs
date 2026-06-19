@@ -1,5 +1,6 @@
 //! `flight-academy-store` — envelope-encryption primitives per ADR-001
-//! §D, ADR-012 §A, and ADR-022 (pluggable AEAD).
+//! §D, ADR-012 §A, ADR-022 (pluggable AEAD), and ADR-023 (DEK lifecycle
+//! and rotation).
 //!
 //! Three layers compose:
 //!
@@ -7,10 +8,13 @@
 //!    (AES-256-GCM-SIV default, ChaCha20-Poly1305, AES-256-GCM) and the
 //!    [`Envelope`] format that frames a ciphertext with its
 //!    self-describing algorithm header.
-//! 2. [`key_provider`] — [`KeyProvider`] derives per-`(record_kind,
-//!    controller)` DEKs from a master KEK via HKDF-SHA256 per ADR-012
-//!    §A. v0.1 master-key sources are in-memory (tests) and a
-//!    filesystem path (production K8s Secret mount).
+//! 2. [`key_provider`] — the [`KeyProvider`] trait per ADR-023 §G plus
+//!    an [`InMemoryKeyProvider`] backing unit tests. Manages the
+//!    lifecycle of wrapped DEKs per `(controller, record_kind, version)`
+//!    triple — generation, active resolution, version-specific reads,
+//!    rotation, and crypto-shredding. The sqlx-backed production impl
+//!    reading `tenant_dek_wrappings` / `user_dek_wrappings` tables
+//!    ships in C2b.3.
 //! 3. [`encrypted`] — [`EncryptedString`] and [`EncryptedJson<T>`]
 //!    wrappers present plaintext at the API boundary and ciphertext at
 //!    the wire/disk boundary.
@@ -27,4 +31,4 @@ pub mod key_provider;
 pub use aead::{AeadCipher, CipherRegistry, Envelope};
 pub use encrypted::{AadRecord, EncryptedJson, EncryptedString};
 pub use error::{StoreError, StoreResult};
-pub use key_provider::{ControllerId, Dek, KeyProvider};
+pub use key_provider::{ControllerId, Dek, InMemoryKeyProvider, KeyProvider, WrappedDek};
