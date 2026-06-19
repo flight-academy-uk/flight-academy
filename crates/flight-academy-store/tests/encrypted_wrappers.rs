@@ -10,10 +10,11 @@
 //! - Empty plaintext is encryptable (auth tag still provides integrity).
 //! - Large plaintext (32 KB) round-trips correctly — proves the
 //!   wrappers don't impose a size cap on top of the AEAD's natural one.
-//! - Cross-controller decryption with the wrong DEK fails.
+//! - Cross-controller decryption with the wrong DEK fails per ADR-012 §A
+//!   controller-owner rule.
 
 use flight_academy_store::{
-    AadRecord, ControllerId, EncryptedJson, EncryptedString, KeyProvider,
+    AadRecord, ControllerId, EncryptedJson, EncryptedString, InMemoryKeyProvider, KeyProvider,
     aead::{CipherRegistry, algo_id},
 };
 use serde::{Deserialize, Serialize};
@@ -39,15 +40,20 @@ fn fixture_aad() -> AadRecord<'static> {
     }
 }
 
-fn dek_for_test() -> flight_academy_store::Dek {
-    let kp = KeyProvider::from_master_bytes([0x99; 32]);
-    kp.for_record("tenant_brand", ControllerId::Tenant(Uuid::nil()))
+/// Seed a `KeyProvider` with an active DEK for `(Tenant(nil), "tenant_brand")`
+/// and return the resolved DEK. Each test gets a fresh provider so the
+/// random DEK bytes are independent.
+fn fixture_dek() -> flight_academy_store::Dek {
+    let kp = InMemoryKeyProvider::from_master_bytes([0x99; 32]);
+    let controller = ControllerId::Tenant(Uuid::nil());
+    kp.generate_dek(controller, "tenant_brand").unwrap();
+    kp.active_dek_for(controller, "tenant_brand").unwrap().0
 }
 
 #[test]
 fn encrypted_string_round_trips() {
     let registry = registry();
-    let dek = dek_for_test();
+    let dek = fixture_dek();
     let aad = fixture_aad();
     let plaintext = "robert@shalders.co.uk";
 
@@ -70,7 +76,7 @@ fn encrypted_string_round_trips() {
 #[test]
 fn encrypted_json_round_trips_typed_struct() {
     let registry = registry();
-    let dek = dek_for_test();
+    let dek = fixture_dek();
     let aad = fixture_aad();
 
     let brand = BrandSettings {
@@ -95,7 +101,7 @@ fn encrypted_json_round_trips_typed_struct() {
 #[test]
 fn encrypted_string_empty_plaintext_round_trips() {
     let registry = registry();
-    let dek = dek_for_test();
+    let dek = fixture_dek();
     let aad = fixture_aad();
 
     let encrypted = EncryptedString::seal(&registry, &dek, "", &aad).unwrap();
@@ -112,7 +118,7 @@ fn encrypted_string_empty_plaintext_round_trips() {
 #[test]
 fn encrypted_string_large_plaintext_round_trips() {
     let registry = registry();
-    let dek = dek_for_test();
+    let dek = fixture_dek();
     let aad = fixture_aad();
     let plaintext: String = "a".repeat(32 * 1024);
 
@@ -135,9 +141,13 @@ fn cross_controller_dek_fails_decrypt() {
     // try to open ciphertext sealed under tenant A's DEK using tenant
     // B's DEK, decryption fails.
     let registry = registry();
-    let kp = KeyProvider::from_master_bytes([0x99; 32]);
-    let dek_a = kp.for_record("tenant_brand", ControllerId::Tenant(Uuid::from_u128(1)));
-    let dek_b = kp.for_record("tenant_brand", ControllerId::Tenant(Uuid::from_u128(2)));
+    let kp = InMemoryKeyProvider::from_master_bytes([0x99; 32]);
+    let controller_a = ControllerId::Tenant(Uuid::from_u128(1));
+    let controller_b = ControllerId::Tenant(Uuid::from_u128(2));
+    kp.generate_dek(controller_a, "tenant_brand").unwrap();
+    kp.generate_dek(controller_b, "tenant_brand").unwrap();
+    let dek_a = kp.active_dek_for(controller_a, "tenant_brand").unwrap().0;
+    let dek_b = kp.active_dek_for(controller_b, "tenant_brand").unwrap().0;
     let aad = fixture_aad();
 
     let encrypted = EncryptedString::seal(&registry, &dek_a, "tenant A secret", &aad).unwrap();

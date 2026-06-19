@@ -3,10 +3,15 @@
 //! code work with plaintext at the API boundary.
 //!
 //! The v0.1 wrappers expose `seal` and `open` constructors against the
-//! [`Envelope`] format; the sqlx integration that turns these into
-//! transparent column types (per ADR-001 §D) is wired in C2b alongside
-//! the first encrypted column. C2a proves the cryptographic path with
-//! comprehensive unit tests; no schema is touched.
+//! [`Envelope`] format. The caller is responsible for resolving the
+//! correct DEK per ADR-023 §G — typically via
+//! [`KeyProvider::active_dek_for`](crate::key_provider::KeyProvider::active_dek_for)
+//! for writes and
+//! [`KeyProvider::dek_at_version`](crate::key_provider::KeyProvider::dek_at_version)
+//! for reads once the envelope-format bump in C2b.2 lands.
+//!
+//! The sqlx integration that turns these into transparent column types
+//! lands in C2b alongside the first encrypted column.
 
 use crate::aead::{CipherRegistry, Envelope};
 use crate::error::StoreResult;
