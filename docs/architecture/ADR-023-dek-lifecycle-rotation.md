@@ -318,6 +318,15 @@ documents the design.
 
 ### G. Trait surface — `KeyProvider`
 
+> **Refined**: methods return `impl Future<Output = StoreResult<...>> + Send`
+> rather than the bare `StoreResult<...>` shown below. The async return
+> type accommodates DB-backed implementations (e.g. the sqlx-backed
+> `SqlxKeyProvider` in `flight-academy-db`) while costing nothing for
+> sync implementations — `async fn` bodies with no `.await` are erased
+> by Rust's async-fn-in-trait machinery. The trait's *responsibility*
+> shape (the five methods, their parameters, their error surface) is
+> unchanged; only the calling convention is.
+
 The `KeyProvider` trait in `flight-academy-store`
 ([ADR-005 §C](ADR-005-workspace-layout.md)) takes the shape:
 

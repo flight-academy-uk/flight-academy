@@ -215,6 +215,17 @@ impl KeyProvider for SqlxKeyProvider {
         .map_err(sqlx_to_store)?;
         let retired_version = retired_version.ok_or(StoreError::NoActiveDek)? as u32;
 
+        // `retired_version + 1` is equivalent to `MAX(dek_version) + 1`
+        // (the form used in `generate_dek`) under the invariants this
+        // table enforces: the partial unique index allows at most one
+        // active row, and `rotate_dek` only ever advances the version
+        // monotonically by INSERT-after-retire. `generate_dek` uses MAX
+        // because there might be no row yet (first generation);
+        // `rotate_dek` uses retired+1 because it has the just-retired
+        // version in hand from the UPDATE ... RETURNING. Both yield the
+        // same next-version number even when shredding has produced
+        // gaps in the version space (gaps lie below the retired row;
+        // MAX still picks the just-retired version, so MAX+1 == retired+1).
         let new_version = retired_version + 1;
         let wrapped = self
             .master
@@ -248,18 +259,25 @@ impl KeyProvider for SqlxKeyProvider {
     ) -> StoreResult<()> {
         let tenant_id = Self::tenant_id(controller)?;
 
-        // Check existence + state first so the trait-level error
-        // surface (NoSuchDekVersion vs CannotShredActiveDek) matches
-        // what InMemoryKeyProvider reports.
+        // SELECT + DELETE inside one transaction with FOR UPDATE on
+        // the targeted row. The row lock holds from SELECT through
+        // DELETE so a concurrent `rotate_dek` (which would UPDATE this
+        // same row's state if it were the active one) cannot interleave
+        // and cause a false `CannotShredActiveDek` rejection. Mirrors
+        // the transactional discipline in `generate_dek` and
+        // `rotate_dek`.
+        let mut tx = self.pool.begin().await.map_err(sqlx_to_store)?;
+
         let row_state: Option<String> = sqlx::query_scalar(
             "SELECT state
                FROM tenant_dek_wrappings
-              WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3",
+              WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3
+                FOR UPDATE",
         )
         .bind(tenant_id)
         .bind(record_kind)
         .bind(dek_version as i32)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
 
@@ -277,9 +295,11 @@ impl KeyProvider for SqlxKeyProvider {
         .bind(tenant_id)
         .bind(record_kind)
         .bind(dek_version as i32)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
+
+        tx.commit().await.map_err(sqlx_to_store)?;
         Ok(())
     }
 }

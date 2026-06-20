@@ -493,6 +493,55 @@ async fn state_invariant_rejects_retired_without_retired_at() {
     );
 }
 
+// ---- Concurrent shred + rotate: SELECT FOR UPDATE serialises them.
+
+#[tokio::test]
+async fn concurrent_shred_and_rotate_serialise_via_row_lock() {
+    // Stress the `shred_dek` TOCTOU defence: the SELECT FOR UPDATE
+    // on the targeted row holds the row lock through DELETE, so a
+    // concurrent `rotate_dek` (which would otherwise UPDATE the
+    // active row's state and could in principle interleave between
+    // a no-lock SELECT and the DELETE) is forced to wait. The
+    // post-condition is that no operation reports a state-of-the-
+    // world error rooted in stale reads.
+    //
+    // The test seeds v1 (retired) + v2 (active) and races `shred_dek
+    // (v1)` against `rotate_dek`. Both must succeed: shred removes
+    // the retired v1, rotate retires v2 and inserts v3.
+    let db = fresh_db().await;
+    let tenant = seed_tenant(&db, "ato-shredrace", "ATO ShredRace", "ato").await;
+    let kp_a = SqlxKeyProvider::new(db.pool().clone(), master());
+    let kp_b = SqlxKeyProvider::new(db.pool().clone(), master());
+    let controller = ControllerId::Tenant(tenant.id);
+
+    kp_a.generate_dek(controller, "tenant_brand").await.unwrap();
+    kp_a.rotate_dek(controller, "tenant_brand").await.unwrap();
+
+    let (shred_result, rotate_result) = tokio::join!(
+        kp_a.shred_dek(controller, "tenant_brand", 1),
+        kp_b.rotate_dek(controller, "tenant_brand"),
+    );
+    shred_result.expect("shred of retired v1 should succeed");
+    let (new_v, retired_v) = rotate_result.expect("rotate should succeed");
+    assert_eq!(retired_v, 2);
+    assert_eq!(new_v, 3);
+
+    // Post-condition: v1 is gone (shredded), v2 is retired, v3 is active.
+    let rows: Vec<(i32, String)> = sqlx::query_as(
+        "SELECT dek_version, state
+           FROM tenant_dek_wrappings
+          WHERE tenant_id = $1
+       ORDER BY dek_version",
+    )
+    .bind(tenant.id)
+    .fetch_all(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], (2, "retired".to_string()));
+    assert_eq!(rows[1], (3, "active".to_string()));
+}
+
 // ---- Concurrent generate: the partial unique index is the structural defence.
 
 #[tokio::test]
