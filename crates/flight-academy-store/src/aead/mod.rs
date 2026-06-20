@@ -1,4 +1,5 @@
-//! AEAD primitives per [ADR-022](../../../docs/architecture/ADR-022-pluggable-aead.md).
+//! AEAD primitives per [ADR-022](../../../docs/architecture/ADR-022-pluggable-aead.md)
+//! and [ADR-023](../../../docs/architecture/ADR-023-dek-lifecycle-rotation.md).
 //!
 //! Three algorithms ship behind a common [`AeadCipher`] trait, dispatched
 //! by a per-ciphertext algorithm-tag byte. The [`Envelope`] type encodes
@@ -9,6 +10,13 @@
 //! ADR-022 §A. ChaCha20-Poly1305 (`0x02`) and AES-256-GCM (`0x03`) also
 //! ship; the active default is operator-selectable via the
 //! `FA_DEFAULT_AEAD` environment variable per ADR-022 §E.
+//!
+//! Per ADR-023 §B the envelope carries a `dek_version: u32` (big-endian)
+//! after `algo_id` so reads dispatch to the right wrapped-DEK row via
+//! [`crate::key_provider::KeyProvider::dek_at_version`]. The
+//! `ENVELOPE_VERSION` is `0x02`; the prior `0x01` shape (no `dek_version`)
+//! is rejected at parse time per the §B hard-cut decision — no production
+//! data exists under it.
 
 mod chacha;
 mod gcm;
@@ -30,8 +38,19 @@ pub use chacha::ChaCha20Poly1305Aead;
 pub use gcm::AesGcm256;
 pub use gcm_siv::AesGcmSiv256;
 
-/// Format version byte for the ciphertext envelope per ADR-022 §B.
-pub const ENVELOPE_VERSION: u8 = 0x01;
+/// Format version byte for the ciphertext envelope per ADR-022 §B as
+/// refined by ADR-023 §B. `0x02` adds a 4-byte big-endian `dek_version`
+/// after `algo_id`; `0x01` (no `dek_version`) is rejected at parse time
+/// (hard cut — no production data exists under it).
+pub const ENVELOPE_VERSION: u8 = 0x02;
+
+/// Length in bytes of the fixed-size envelope header at `ENVELOPE_VERSION`
+/// 0x02 — `version(1) + algo_id(1) + dek_version(4) + nonce_len(1)`.
+pub const HEADER_LEN: usize = 7;
+
+/// Byte offset within the envelope where the nonce begins, immediately
+/// after [`HEADER_LEN`] bytes of header.
+pub const NONCE_OFFSET: usize = HEADER_LEN;
 
 /// Reserved sentinel `algo_id` that is permanently unassignable per
 /// ADR-022 §A so a zero-initialised buffer or all-`0xFF` corruption is
@@ -170,25 +189,33 @@ impl CipherRegistry {
     }
 }
 
-/// The encoded ciphertext envelope per ADR-022 §B.
+/// The encoded ciphertext envelope per ADR-022 §B as refined by
+/// ADR-023 §B.
 ///
-/// Wire format: `[version(1)][algo_id(1)][nonce_len(1)][nonce(nonce_len)][ciphertext+tag]`.
+/// Wire format at `ENVELOPE_VERSION` `0x02`:
+/// `[version(1)][algo_id(1)][dek_version(4 BE)][nonce_len(1)][nonce(nonce_len)][ciphertext+tag]`.
 ///
 /// The header is not inside the AEAD ciphertext, but its bytes are
 /// bound to the AEAD via the AAD parameter per ADR-022 §C, so any
-/// header tampering causes tag verification to fail.
+/// header tampering — including a `dek_version` swap per ADR-023 §B —
+/// causes tag verification to fail.
 pub struct Envelope;
 
 impl Envelope {
     /// Encrypt and frame a value into the on-disk envelope.
     ///
+    /// `dek_version` is the version of the DEK passed in `key`; the
+    /// encoder writes it into the header so reads dispatch to the right
+    /// wrapped row via [`crate::key_provider::KeyProvider::dek_at_version`].
+    ///
     /// `aad_record` is the column-record identity `record_kind:record_id:column`
     /// per ADR-022 §C; the encoder prepends the header bytes
-    /// `[version|algo_id|nonce_len]` to it so a header swap fails
-    /// authentication.
+    /// `[version|algo_id|dek_version|nonce_len]` to it so a header swap
+    /// fails authentication.
     pub fn encrypt(
         cipher: &dyn AeadCipher,
         key: &[u8],
+        dek_version: u32,
         plaintext: &[u8],
         aad_record: &[u8],
     ) -> StoreResult<Vec<u8>> {
@@ -201,12 +228,13 @@ impl Envelope {
         let mut nonce = vec![0u8; nonce_len];
         OsRng.fill_bytes(&mut nonce);
 
-        let aad = compose_aad(cipher.algo_id(), nonce_len as u8, aad_record);
+        let aad = compose_aad(cipher.algo_id(), dek_version, nonce_len as u8, aad_record);
         let ct = cipher.encrypt(key, &nonce, &aad, plaintext)?;
 
-        let mut out = Vec::with_capacity(3 + nonce_len + ct.len());
+        let mut out = Vec::with_capacity(HEADER_LEN + nonce_len + ct.len());
         out.push(ENVELOPE_VERSION);
         out.push(cipher.algo_id());
+        out.extend_from_slice(&dek_version.to_be_bytes());
         out.push(nonce_len as u8);
         out.extend_from_slice(&nonce);
         out.extend_from_slice(&ct);
@@ -216,25 +244,37 @@ impl Envelope {
     /// Parse and decrypt an envelope using the registry to dispatch by
     /// the header's `algo_id` byte.
     ///
-    /// `key_for` returns the key bytes in a [`Zeroizing<Vec<u8>>`] so
-    /// the buffer is scrubbed when the decrypt call returns —
-    /// callers cannot accidentally leak key material into long-lived
-    /// allocations.
+    /// `key_for` receives `(algo_id, dek_version)` and returns the key
+    /// bytes in a [`Zeroizing<Vec<u8>>`] so the buffer is scrubbed when
+    /// decrypt returns — callers cannot accidentally leak key material
+    /// into long-lived allocations. The version-aware lookup lets a
+    /// single column carry ciphertexts under different DEK versions
+    /// simultaneously per ADR-023 §E.
     pub fn decrypt(
         registry: &CipherRegistry,
-        key_for: impl FnOnce(u8) -> StoreResult<Zeroizing<Vec<u8>>>,
+        key_for: impl FnOnce(u8, u32) -> StoreResult<Zeroizing<Vec<u8>>>,
         envelope: &[u8],
         aad_record: &[u8],
     ) -> StoreResult<Vec<u8>> {
-        if envelope.len() < 3 {
+        if envelope.len() < HEADER_LEN {
             return Err(StoreError::Envelope {
-                reason: "envelope shorter than 3-byte header",
+                reason: "envelope shorter than 7-byte header",
             });
         }
         let version = envelope[0];
         let algo_id = envelope[1];
-        let nonce_len = envelope[2];
+        let dek_version = u32::from_be_bytes([envelope[2], envelope[3], envelope[4], envelope[5]]);
+        let nonce_len = envelope[6];
 
+        if version == 0x01 {
+            // Hard cut per ADR-023 §B — pre-dek_version envelopes are not
+            // readable. No production data exists under 0x01; surfacing
+            // this distinctly aids debugging during the C2a→C2b transition
+            // window.
+            return Err(StoreError::Envelope {
+                reason: "legacy envelope format 0x01 — pre-ADR-023 envelopes are not readable",
+            });
+        }
         if version != ENVELOPE_VERSION {
             return Err(StoreError::Envelope {
                 reason: "unsupported envelope version",
@@ -250,14 +290,14 @@ impl Envelope {
                 reason: "nonce_len outside [12, 32]",
             });
         }
-        let header_end = 3 + nonce_len as usize;
+        let header_end = NONCE_OFFSET + nonce_len as usize;
         if envelope.len() < header_end {
             return Err(StoreError::Envelope {
                 reason: "envelope truncated before nonce end",
             });
         }
 
-        let nonce = &envelope[3..header_end];
+        let nonce = &envelope[NONCE_OFFSET..header_end];
         let ciphertext = &envelope[header_end..];
 
         let cipher = registry.get(algo_id)?;
@@ -267,18 +307,20 @@ impl Envelope {
             });
         }
 
-        let key = key_for(algo_id)?;
-        let aad = compose_aad(algo_id, nonce_len, aad_record);
+        let key = key_for(algo_id, dek_version)?;
+        let aad = compose_aad(algo_id, dek_version, nonce_len, aad_record);
         cipher.decrypt(&key, nonce, &aad, ciphertext)
     }
 }
 
-/// Compose the AAD per ADR-022 §C: header bytes folded in front of the
-/// column-record identity so a header swap fails authentication.
-fn compose_aad(algo_id: u8, nonce_len: u8, aad_record: &[u8]) -> Vec<u8> {
-    let mut aad = Vec::with_capacity(3 + aad_record.len());
+/// Compose the AAD per ADR-022 §C as refined by ADR-023 §B: header bytes
+/// (including `dek_version`) folded in front of the column-record identity
+/// so a header swap — including a DEK-version swap — fails authentication.
+fn compose_aad(algo_id: u8, dek_version: u32, nonce_len: u8, aad_record: &[u8]) -> Vec<u8> {
+    let mut aad = Vec::with_capacity(HEADER_LEN + aad_record.len());
     aad.push(ENVELOPE_VERSION);
     aad.push(algo_id);
+    aad.extend_from_slice(&dek_version.to_be_bytes());
     aad.push(nonce_len);
     aad.extend_from_slice(aad_record);
     aad
