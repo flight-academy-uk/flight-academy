@@ -14,12 +14,14 @@
 //! - Cross-controller decryption with the wrong DEK fails per ADR-012 §A
 //!   controller-owner rule.
 //! - Wrapper round trips dispatch across DEK versions correctly when
-//!   the caller's `dek_for` closure routes by `dek_version` — the
-//!   wrapper-layer reflection of ADR-023 §E1's mixed-version property.
+//!   the caller pre-resolves the DEK via `Envelope::peek_dek_version` +
+//!   `KeyProvider::dek_at_version` — the wrapper-layer reflection of
+//!   ADR-023 §E1's mixed-version property and the canonical pattern
+//!   for using sync wrappers with an async `KeyProvider`.
 
 use flight_academy_store::{
     AadRecord, ControllerId, EncryptedJson, EncryptedString, InMemoryKeyProvider, KeyProvider,
-    aead::{CipherRegistry, algo_id},
+    aead::{CipherRegistry, Envelope, algo_id},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -47,17 +49,17 @@ fn fixture_aad() -> AadRecord<'static> {
 /// Seed a `KeyProvider` with an active DEK for `(Tenant(nil), "tenant_brand")`
 /// and return the resolved DEK + its version. Each test gets a fresh
 /// provider so the random DEK bytes are independent.
-fn fixture_dek() -> (flight_academy_store::Dek, u32) {
+async fn fixture_dek() -> (flight_academy_store::Dek, u32) {
     let kp = InMemoryKeyProvider::from_master_bytes([0x99; 32]);
     let controller = ControllerId::Tenant(Uuid::nil());
-    kp.generate_dek(controller, "tenant_brand").unwrap();
-    kp.active_dek_for(controller, "tenant_brand").unwrap()
+    kp.generate_dek(controller, "tenant_brand").await.unwrap();
+    kp.active_dek_for(controller, "tenant_brand").await.unwrap()
 }
 
-#[test]
-fn encrypted_string_round_trips() {
+#[tokio::test]
+async fn encrypted_string_round_trips() {
     let registry = registry();
-    let (dek, dek_version) = fixture_dek();
+    let (dek, dek_version) = fixture_dek().await;
     let aad = fixture_aad();
     let plaintext = "robert@shalders.co.uk";
 
@@ -77,10 +79,10 @@ fn encrypted_string_round_trips() {
     assert_eq!(recovered, plaintext);
 }
 
-#[test]
-fn encrypted_json_round_trips_typed_struct() {
+#[tokio::test]
+async fn encrypted_json_round_trips_typed_struct() {
     let registry = registry();
-    let (dek, dek_version) = fixture_dek();
+    let (dek, dek_version) = fixture_dek().await;
     let aad = fixture_aad();
 
     let brand = BrandSettings {
@@ -102,10 +104,10 @@ fn encrypted_json_round_trips_typed_struct() {
     assert_eq!(recovered, brand);
 }
 
-#[test]
-fn encrypted_string_empty_plaintext_round_trips() {
+#[tokio::test]
+async fn encrypted_string_empty_plaintext_round_trips() {
     let registry = registry();
-    let (dek, dek_version) = fixture_dek();
+    let (dek, dek_version) = fixture_dek().await;
     let aad = fixture_aad();
 
     let encrypted = EncryptedString::seal(&registry, &dek, dek_version, "", &aad).unwrap();
@@ -119,10 +121,10 @@ fn encrypted_string_empty_plaintext_round_trips() {
     assert_eq!(recovered, "");
 }
 
-#[test]
-fn encrypted_string_large_plaintext_round_trips() {
+#[tokio::test]
+async fn encrypted_string_large_plaintext_round_trips() {
     let registry = registry();
-    let (dek, dek_version) = fixture_dek();
+    let (dek, dek_version) = fixture_dek().await;
     let aad = fixture_aad();
     let plaintext: String = "a".repeat(32 * 1024);
 
@@ -138,8 +140,8 @@ fn encrypted_string_large_plaintext_round_trips() {
     assert_eq!(recovered, plaintext);
 }
 
-#[test]
-fn cross_controller_dek_fails_decrypt() {
+#[tokio::test]
+async fn cross_controller_dek_fails_decrypt() {
     // ADR-012 §A: the controller-owner rule means a controller's DEK
     // never decrypts another controller's record. Concretely: if we
     // try to open ciphertext sealed under tenant A's DEK using tenant
@@ -148,10 +150,16 @@ fn cross_controller_dek_fails_decrypt() {
     let kp = InMemoryKeyProvider::from_master_bytes([0x99; 32]);
     let controller_a = ControllerId::Tenant(Uuid::from_u128(1));
     let controller_b = ControllerId::Tenant(Uuid::from_u128(2));
-    kp.generate_dek(controller_a, "tenant_brand").unwrap();
-    kp.generate_dek(controller_b, "tenant_brand").unwrap();
-    let (dek_a, ver_a) = kp.active_dek_for(controller_a, "tenant_brand").unwrap();
-    let (dek_b, _) = kp.active_dek_for(controller_b, "tenant_brand").unwrap();
+    kp.generate_dek(controller_a, "tenant_brand").await.unwrap();
+    kp.generate_dek(controller_b, "tenant_brand").await.unwrap();
+    let (dek_a, ver_a) = kp
+        .active_dek_for(controller_a, "tenant_brand")
+        .await
+        .unwrap();
+    let (dek_b, _) = kp
+        .active_dek_for(controller_b, "tenant_brand")
+        .await
+        .unwrap();
     let aad = fixture_aad();
 
     let encrypted =
@@ -166,43 +174,65 @@ fn cross_controller_dek_fails_decrypt() {
     assert!(matches!(err, flight_academy_store::StoreError::Decrypt));
 }
 
-#[test]
-fn wrapper_dispatches_across_dek_versions() {
+#[tokio::test]
+async fn wrapper_dispatches_across_dek_versions() {
     // ADR-023 §E1 at the wrapper layer: a single column can carry
-    // ciphertexts under multiple DEK versions during rotation, and
-    // the caller's `dek_for` closure routes to the right key by
-    // `(controller, record_kind, dek_version)`. Here a tenant rotates
-    // once; both old and new ciphertexts decrypt via the same closure.
+    // ciphertexts under multiple DEK versions during rotation.
+    //
+    // The canonical pattern for using a sync wrapper with an async
+    // `KeyProvider` is: parse `dek_version` from the envelope header
+    // via `Envelope::peek_dek_version`, look up the DEK via async
+    // `KeyProvider::dek_at_version`, then call `EncryptedString::open`
+    // with a closure that returns the pre-resolved DEK. This test
+    // exercises that pattern end-to-end across a rotation event.
     let registry = registry();
     let kp = InMemoryKeyProvider::from_master_bytes([0x99; 32]);
     let controller = ControllerId::Tenant(Uuid::nil());
-    kp.generate_dek(controller, "tenant_brand").unwrap();
+    kp.generate_dek(controller, "tenant_brand").await.unwrap();
 
-    let (dek_v1, ver_v1) = kp.active_dek_for(controller, "tenant_brand").unwrap();
+    let (dek_v1, ver_v1) = kp.active_dek_for(controller, "tenant_brand").await.unwrap();
     let aad = fixture_aad();
     let ct_v1 =
         EncryptedString::seal(&registry, &dek_v1, ver_v1, "first generation", &aad).unwrap();
     let bytes_v1 = ct_v1.as_bytes().to_vec();
 
     // Rotate to a new active version.
-    kp.rotate_dek(controller, "tenant_brand").unwrap();
-    let (dek_v2, ver_v2) = kp.active_dek_for(controller, "tenant_brand").unwrap();
+    kp.rotate_dek(controller, "tenant_brand").await.unwrap();
+    let (dek_v2, ver_v2) = kp.active_dek_for(controller, "tenant_brand").await.unwrap();
     assert_eq!(ver_v2, 2);
     let ct_v2 =
         EncryptedString::seal(&registry, &dek_v2, ver_v2, "second generation", &aad).unwrap();
     let bytes_v2 = ct_v2.as_bytes().to_vec();
 
-    // The dek_for closure routes by dek_version — same shape a sqlx-
-    // backed reader will use when it calls `KeyProvider::dek_at_version`.
-    let dek_for = |_algo_id: u8, requested: u32| {
-        let dek = kp
-            .dek_at_version(controller, "tenant_brand", requested)
-            .unwrap();
-        Ok(Zeroizing::new(dek.bytes().to_vec()))
-    };
-
-    let pt_v1 = EncryptedString::open(&registry, dek_for, &bytes_v1, &aad).unwrap();
-    let pt_v2 = EncryptedString::open(&registry, dek_for, &bytes_v2, &aad).unwrap();
+    // Read v1: peek → look up → decrypt.
+    let parsed_v1 = Envelope::peek_dek_version(&bytes_v1).unwrap();
+    assert_eq!(parsed_v1, 1);
+    let resolved_v1 = kp
+        .dek_at_version(controller, "tenant_brand", parsed_v1)
+        .await
+        .unwrap();
+    let pt_v1 = EncryptedString::open(
+        &registry,
+        |_, _| Ok(Zeroizing::new(resolved_v1.bytes().to_vec())),
+        &bytes_v1,
+        &aad,
+    )
+    .unwrap();
     assert_eq!(pt_v1, "first generation");
+
+    // Read v2: same pattern.
+    let parsed_v2 = Envelope::peek_dek_version(&bytes_v2).unwrap();
+    assert_eq!(parsed_v2, 2);
+    let resolved_v2 = kp
+        .dek_at_version(controller, "tenant_brand", parsed_v2)
+        .await
+        .unwrap();
+    let pt_v2 = EncryptedString::open(
+        &registry,
+        |_, _| Ok(Zeroizing::new(resolved_v2.bytes().to_vec())),
+        &bytes_v2,
+        &aad,
+    )
+    .unwrap();
     assert_eq!(pt_v2, "second generation");
 }

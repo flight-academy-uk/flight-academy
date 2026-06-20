@@ -76,6 +76,21 @@ pub enum StoreError {
     #[display("cannot shred an active DEK; rotate to retire it first")]
     CannotShredActiveDek,
 
+    /// The current `KeyProvider` impl does not support the requested
+    /// controller kind. At v0.1 the sqlx-backed `SqlxKeyProvider` in
+    /// `flight-academy-db` supports `ControllerId::Tenant` only —
+    /// `user_dek_wrappings` ships when the `users` table lands in
+    /// Slice D auth.
+    #[display("controller kind unsupported by this KeyProvider impl: {reason}")]
+    UnsupportedController { reason: &'static str },
+
+    /// Underlying storage error (e.g. sqlx call failure) from a
+    /// persistence-backed `KeyProvider` impl. Held as a string so the
+    /// store crate stays free of a sqlx dependency; richer typing is
+    /// available from the impl's owning crate if the caller needs it.
+    #[display("storage layer error: {_0}")]
+    Storage(String),
+
     /// JSON serialise/deserialise failure on the EncryptedJson plaintext
     /// path — surfaces before encryption or after decryption.
     #[display("encrypted JSON codec: {_0}")]

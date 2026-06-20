@@ -8,10 +8,12 @@
 //! self-host install script per ADR-002 §F / §I).
 
 pub mod audit;
+mod dek_wrappings;
 mod error;
 mod tenants;
 
 pub use audit::AuditEvent;
+pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;
 

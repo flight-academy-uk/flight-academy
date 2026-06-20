@@ -137,6 +137,30 @@ CREATE TABLE public.audit_events_2026_07 (
 
 
 --
+-- Name: tenant_dek_wrappings; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.tenant_dek_wrappings (
+    tenant_id uuid NOT NULL,
+    record_kind text NOT NULL,
+    dek_version integer NOT NULL,
+    wrapped_bytes bytea NOT NULL,
+    wrap_algo_id smallint NOT NULL,
+    kek_id text NOT NULL,
+    state text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    retired_at timestamp with time zone,
+    CONSTRAINT tenant_dek_wrappings_dek_version_check CHECK ((dek_version >= 1)),
+    CONSTRAINT tenant_dek_wrappings_kek_id_check CHECK (((length(kek_id) >= 1) AND (length(kek_id) <= 200))),
+    CONSTRAINT tenant_dek_wrappings_record_kind_check CHECK (((length(record_kind) >= 1) AND (length(record_kind) <= 64))),
+    CONSTRAINT tenant_dek_wrappings_state_check CHECK ((state = ANY (ARRAY['active'::text, 'retired'::text]))),
+    CONSTRAINT tenant_dek_wrappings_state_consistency CHECK ((((state = 'active'::text) AND (retired_at IS NULL)) OR ((state = 'retired'::text) AND (retired_at IS NOT NULL)))),
+    CONSTRAINT tenant_dek_wrappings_wrap_algo_id_check CHECK (((wrap_algo_id >= 1) AND (wrap_algo_id <= 254))),
+    CONSTRAINT tenant_dek_wrappings_wrapped_bytes_check CHECK (((octet_length(wrapped_bytes) >= 32) AND (octet_length(wrapped_bytes) <= 1024)))
+);
+
+
+--
 -- Name: tenants; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -204,6 +228,14 @@ ALTER TABLE ONLY public.audit_events_2026_07
 
 
 --
+-- Name: tenant_dek_wrappings tenant_dek_wrappings_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_dek_wrappings
+    ADD CONSTRAINT tenant_dek_wrappings_pkey PRIMARY KEY (tenant_id, record_kind, dek_version);
+
+
+--
 -- Name: tenants tenants_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -230,6 +262,13 @@ CREATE INDEX audit_events_2026_06_chain_kind_chain_id_occurred_at_idx ON public.
 --
 
 CREATE INDEX audit_events_2026_07_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_07 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: tenant_dek_wrappings_one_active; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX tenant_dek_wrappings_one_active ON public.tenant_dek_wrappings USING btree (tenant_id, record_kind) WHERE (state = 'active'::text);
 
 
 --
@@ -300,6 +339,14 @@ CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON public.audit_events FOR E
 --
 
 CREATE TRIGGER tenants_bump_updated_at BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION public.tenants_bump_updated_at();
+
+
+--
+-- Name: tenant_dek_wrappings tenant_dek_wrappings_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.tenant_dek_wrappings
+    ADD CONSTRAINT tenant_dek_wrappings_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
 
 --

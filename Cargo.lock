@@ -999,7 +999,9 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "flight-academy-core",
+ "flight-academy-store",
  "flight-academy-test-support",
+ "rand_core 0.6.4",
  "serde",
  "serde_jcs",
  "serde_json",
@@ -1009,6 +1011,7 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]
