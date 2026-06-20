@@ -50,29 +50,40 @@ pub struct EncryptedString {
 }
 
 impl EncryptedString {
-    /// Encrypt `plaintext` under the registry's default algorithm.
+    /// Encrypt `plaintext` under the registry's default algorithm. The
+    /// caller passes the active DEK + its version (typically resolved
+    /// from
+    /// [`KeyProvider::active_dek_for`](crate::key_provider::KeyProvider::active_dek_for)),
+    /// which the envelope carries in its header so a later read can
+    /// dispatch to the right wrapped row per ADR-023 §B.
     pub fn seal(
         registry: &CipherRegistry,
         dek: &Dek,
+        dek_version: u32,
         plaintext: &str,
         aad: &AadRecord<'_>,
     ) -> StoreResult<Self> {
         let cipher = registry.default_cipher();
         let aad_bytes = aad.to_bytes();
-        let ct = Envelope::encrypt(cipher, dek.bytes(), plaintext.as_bytes(), &aad_bytes)?;
+        let ct = Envelope::encrypt(
+            cipher,
+            dek.bytes(),
+            dek_version,
+            plaintext.as_bytes(),
+            &aad_bytes,
+        )?;
         Ok(Self { ciphertext: ct })
     }
 
     /// Decrypt an envelope using the registry to dispatch by algo_id.
-    /// `dek_for` resolves the DEK to use for the algorithm — at v0.1
-    /// the DEK is the same regardless of algorithm (HKDF derivation
-    /// is algorithm-agnostic), but the indirection lets a future
-    /// per-algorithm DEK story join without changing the caller. The
-    /// returned key bytes are wrapped in [`Zeroizing<Vec<u8>>`] so the
-    /// buffer is scrubbed when decryption returns.
+    /// `dek_for` receives `(algo_id, dek_version)` and returns the DEK
+    /// bytes — typically resolved via
+    /// [`KeyProvider::dek_at_version`](crate::key_provider::KeyProvider::dek_at_version).
+    /// The returned key bytes are wrapped in [`Zeroizing<Vec<u8>>`] so
+    /// the buffer is scrubbed when decryption returns.
     pub fn open(
         registry: &CipherRegistry,
-        dek_for: impl FnOnce(u8) -> StoreResult<Zeroizing<Vec<u8>>>,
+        dek_for: impl FnOnce(u8, u32) -> StoreResult<Zeroizing<Vec<u8>>>,
         ciphertext: &[u8],
         aad: &AadRecord<'_>,
     ) -> StoreResult<String> {
@@ -100,6 +111,7 @@ impl<T: Serialize + DeserializeOwned> EncryptedJson<T> {
     pub fn seal(
         registry: &CipherRegistry,
         dek: &Dek,
+        dek_version: u32,
         plaintext: &T,
         aad: &AadRecord<'_>,
     ) -> StoreResult<Self> {
@@ -109,7 +121,7 @@ impl<T: Serialize + DeserializeOwned> EncryptedJson<T> {
         // returns, even on the error path.
         let json = Zeroizing::new(serde_json::to_vec(plaintext)?);
         let aad_bytes = aad.to_bytes();
-        let ct = Envelope::encrypt(cipher, dek.bytes(), &json, &aad_bytes)?;
+        let ct = Envelope::encrypt(cipher, dek.bytes(), dek_version, &json, &aad_bytes)?;
         Ok(Self {
             ciphertext: ct,
             _marker: std::marker::PhantomData,
@@ -118,7 +130,7 @@ impl<T: Serialize + DeserializeOwned> EncryptedJson<T> {
 
     pub fn open(
         registry: &CipherRegistry,
-        dek_for: impl FnOnce(u8) -> StoreResult<Zeroizing<Vec<u8>>>,
+        dek_for: impl FnOnce(u8, u32) -> StoreResult<Zeroizing<Vec<u8>>>,
         ciphertext: &[u8],
         aad: &AadRecord<'_>,
     ) -> StoreResult<T> {
