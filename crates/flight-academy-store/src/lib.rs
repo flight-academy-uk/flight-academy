@@ -31,4 +31,6 @@ pub mod key_provider;
 pub use aead::{AeadCipher, CipherRegistry, Envelope};
 pub use encrypted::{AadRecord, EncryptedJson, EncryptedString};
 pub use error::{StoreError, StoreResult};
-pub use key_provider::{ControllerId, Dek, InMemoryKeyProvider, KeyProvider, WrappedDek};
+pub use key_provider::{
+    ControllerId, Dek, InMemoryKeyProvider, KeyProvider, MasterKek, WrappedDek,
+};

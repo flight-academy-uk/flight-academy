@@ -48,6 +48,7 @@ use crate::aead::{AeadCipher, AesGcmSiv256};
 use crate::error::{StoreError, StoreResult};
 use rand_core::{OsRng, RngCore};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Path;
 use std::sync::RwLock;
 use uuid::Uuid;
@@ -137,19 +138,31 @@ impl WrappedDek {
     }
 }
 
-/// The master Key Encryption Key (KEK). Held in memory only; zeroized
-/// on drop. The on-disk file path (K8s Secret mount, ESO-decrypted
-/// `age` blob, or operator-supplied 32-byte file) is the production
-/// source per ADR-001 §D; in-memory bytes are the test source.
+/// The master Key Encryption Key (KEK) — the symmetric secret that
+/// wraps and unwraps DEKs per ADR-001 §D + ADR-023 §A.
+///
+/// Held in memory only; zeroized on drop. The on-disk file path (K8s
+/// Secret mount, ESO-decrypted `age` blob, or operator-supplied 32-byte
+/// file) is the production source per ADR-001 §D; in-memory bytes are
+/// the test source.
+///
+/// Public so other crates can compose alternate [`KeyProvider`] impls
+/// (`flight-academy-db`'s `SqlxKeyProvider`, future KMS-resident
+/// providers) using the same wrap/unwrap primitives.
 #[derive(ZeroizeOnDrop)]
-struct MasterKek([u8; 32]);
+pub struct MasterKek([u8; 32]);
 
 impl MasterKek {
-    fn from_bytes(bytes: [u8; 32]) -> Self {
+    /// Construct from in-memory master bytes. Used by tests.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }
 
-    fn from_file(path: impl AsRef<Path>) -> StoreResult<Self> {
+    /// Construct from a master-key file. The file must contain exactly
+    /// 32 bytes — no leading/trailing whitespace, no length prefix, no
+    /// encoding. A K8s Secret mount on `binaryData` produces this shape
+    /// directly.
+    pub fn from_file(path: impl AsRef<Path>) -> StoreResult<Self> {
         // The file-read buffer is held in `Zeroizing<Vec<u8>>` so it is
         // zeroed on drop regardless of whether the length check passes
         // — a 31-byte rejection still scrubs the 31 bytes from memory.
@@ -161,15 +174,99 @@ impl MasterKek {
         master.copy_from_slice(&bytes);
         Ok(Self(master))
     }
+
+    /// Compose the wrap-AAD per ADR-023 §C.
+    ///
+    /// Format: `"dek-wrap:" || kind_byte || ":" || uuid_bytes(16) ||
+    /// ":" || record_kind || ":" || version_be_bytes(4)`. The
+    /// `"dek-wrap:"` prefix is the namespace separator — a wrapped DEK
+    /// cannot be reused as a data ciphertext because the data AAD per
+    /// ADR-022 §C does not carry this prefix.
+    fn wrap_aad(controller: ControllerId, record_kind: &str, version: u32) -> Vec<u8> {
+        let uuid = controller.uuid();
+        let mut aad = Vec::with_capacity(9 + 1 + 1 + 1 + 16 + 1 + record_kind.len() + 1 + 4);
+        aad.extend_from_slice(b"dek-wrap:");
+        aad.push(controller.kind_byte());
+        aad.push(b':');
+        aad.extend_from_slice(uuid.as_bytes());
+        aad.push(b':');
+        aad.extend_from_slice(record_kind.as_bytes());
+        aad.push(b':');
+        aad.extend_from_slice(&version.to_be_bytes());
+        aad
+    }
+
+    /// Wrap a 32-byte DEK under this KEK using AES-256-GCM-SIV with the
+    /// per-wrap AAD per ADR-023 §C. Output is `[nonce(12) || ciphertext+tag(48)]`
+    /// — 60 bytes self-contained for storage.
+    pub fn wrap(
+        &self,
+        controller: ControllerId,
+        record_kind: &str,
+        version: u32,
+        dek: &[u8; 32],
+    ) -> StoreResult<WrappedDek> {
+        let cipher = AesGcmSiv256;
+        let mut nonce = vec![0u8; cipher.nonce_size()];
+        OsRng.fill_bytes(&mut nonce);
+        let aad = Self::wrap_aad(controller, record_kind, version);
+        let ct = cipher.encrypt(&self.0, &nonce, &aad, dek)?;
+
+        let mut wrapped = Vec::with_capacity(nonce.len() + ct.len());
+        wrapped.extend_from_slice(&nonce);
+        wrapped.extend_from_slice(&ct);
+        // The plaintext DEK bytes the caller passed are still in their
+        // own buffer; zeroising that buffer is the caller's
+        // responsibility. The local nonce is not key material — but
+        // zeroising it costs nothing and keeps the discipline uniform.
+        nonce.zeroize();
+        Ok(WrappedDek::from_bytes(wrapped))
+    }
+
+    /// Unwrap a [`WrappedDek`] under this KEK. Tag failure surfaces as
+    /// [`StoreError::Decrypt`] — indistinguishable from "wrong KEK",
+    /// "tampered AAD", or "corrupted wrap bytes" per the AEAD security
+    /// contract.
+    pub fn unwrap(
+        &self,
+        controller: ControllerId,
+        record_kind: &str,
+        version: u32,
+        wrapped: &WrappedDek,
+    ) -> StoreResult<Dek> {
+        let cipher = AesGcmSiv256;
+        let nonce_size = cipher.nonce_size();
+        if wrapped.len() < nonce_size {
+            return Err(StoreError::Envelope {
+                reason: "wrapped DEK shorter than nonce length",
+            });
+        }
+        let (nonce, ct) = wrapped.split_at_nonce(nonce_size);
+        let aad = Self::wrap_aad(controller, record_kind, version);
+        let pt = Zeroizing::new(cipher.decrypt(&self.0, nonce, &aad, ct)?);
+        if pt.len() != 32 {
+            return Err(StoreError::Envelope {
+                reason: "unwrapped DEK is not 32 bytes",
+            });
+        }
+        let mut dek = [0u8; 32];
+        dek.copy_from_slice(&pt);
+        Ok(Dek(dek))
+    }
 }
 
 /// `KeyProvider` per ADR-023 §G. Manages the lifecycle of wrapped DEKs
 /// for a set of `(controller, record_kind)` pairs.
 ///
 /// The trait shape is implementation-agnostic: the in-memory variant
-/// backs unit tests; a sqlx-backed variant lands in C2b.3 reading the
-/// `*_dek_wrappings` tables; future KMS-resident variants (AWS KMS,
-/// OpenBao Transit) wrap the same shape behind a different wrap layer.
+/// backs unit tests; `flight-academy-db`'s `SqlxKeyProvider` is the
+/// sqlx-backed production impl reading `tenant_dek_wrappings`; future
+/// KMS-resident variants (AWS KMS, OpenBao Transit) wrap the same
+/// shape behind a different wrap layer.
+///
+/// Methods are async to accommodate DB-backed impls; the in-memory
+/// impl's async fns simply do no `.await` — Rust's async fn machinery
+/// erases the cost when the body is synchronous.
 pub trait KeyProvider: Send + Sync + 'static {
     /// Generate a new random DEK for `(controller, record_kind)`, wrap
     /// it under the master KEK, store it as the active version, and
@@ -180,7 +277,11 @@ pub trait KeyProvider: Send + Sync + 'static {
     /// [`StoreError::AlreadyActiveDek`] — rotation must go through
     /// [`KeyProvider::rotate_dek`] for atomic active-to-retired
     /// transition.
-    fn generate_dek(&self, controller: ControllerId, record_kind: &str) -> StoreResult<u32>;
+    fn generate_dek(
+        &self,
+        controller: ControllerId,
+        record_kind: &str,
+    ) -> impl Future<Output = StoreResult<u32>> + Send;
 
     /// Resolve the active DEK for writes. Returns the plaintext DEK
     /// plus the version under which it is currently active.
@@ -192,10 +293,11 @@ pub trait KeyProvider: Send + Sync + 'static {
         &self,
         controller: ControllerId,
         record_kind: &str,
-    ) -> StoreResult<(Dek, u32)>;
+    ) -> impl Future<Output = StoreResult<(Dek, u32)>> + Send;
 
     /// Resolve a specific DEK version for reads — the version byte is
-    /// read from the ciphertext envelope header per ADR-023 §B.
+    /// read from the ciphertext envelope header per ADR-023 §B and
+    /// can be parsed via [`crate::aead::Envelope::peek_dek_version`].
     ///
     /// Returns [`StoreError::NoSuchDekVersion`] if the version was
     /// never generated for this pair, or has been crypto-shredded.
@@ -204,7 +306,7 @@ pub trait KeyProvider: Send + Sync + 'static {
         controller: ControllerId,
         record_kind: &str,
         dek_version: u32,
-    ) -> StoreResult<Dek>;
+    ) -> impl Future<Output = StoreResult<Dek>> + Send;
 
     /// Rotate the active DEK: generate a new active version, retire
     /// the previous active version, atomically. Returns
@@ -216,7 +318,11 @@ pub trait KeyProvider: Send + Sync + 'static {
     /// version to the new active version over time; once the sweep
     /// completes and the overlap window elapses, the retired row is
     /// shredded.
-    fn rotate_dek(&self, controller: ControllerId, record_kind: &str) -> StoreResult<(u32, u32)>;
+    fn rotate_dek(
+        &self,
+        controller: ControllerId,
+        record_kind: &str,
+    ) -> impl Future<Output = StoreResult<(u32, u32)>> + Send;
 
     /// Crypto-shred a retired DEK version (remove the wrapping row).
     ///
@@ -230,7 +336,7 @@ pub trait KeyProvider: Send + Sync + 'static {
         controller: ControllerId,
         record_kind: &str,
         dek_version: u32,
-    ) -> StoreResult<()>;
+    ) -> impl Future<Output = StoreResult<()>> + Send;
 }
 
 /// In-memory `KeyProvider` impl backing unit tests. Holds wrappings in
@@ -284,84 +390,6 @@ impl InMemoryKeyProvider {
         })
     }
 
-    /// Compose the wrap-AAD per ADR-023 §C.
-    ///
-    /// Format: `"dek-wrap:" || kind_byte || ":" || uuid_bytes(16) ||
-    /// ":" || record_kind || ":" || version_be_bytes(4)`. The
-    /// `"dek-wrap:"` prefix is the namespace separator — a wrapped DEK
-    /// cannot be reused as a data ciphertext because the data AAD does
-    /// not carry this prefix (ADR-022 §C).
-    fn wrap_aad(controller: ControllerId, record_kind: &str, version: u32) -> Vec<u8> {
-        let uuid = controller.uuid();
-        let mut aad = Vec::with_capacity(9 + 1 + 1 + 1 + 16 + 1 + record_kind.len() + 1 + 4);
-        aad.extend_from_slice(b"dek-wrap:");
-        aad.push(controller.kind_byte());
-        aad.push(b':');
-        aad.extend_from_slice(uuid.as_bytes());
-        aad.push(b':');
-        aad.extend_from_slice(record_kind.as_bytes());
-        aad.push(b':');
-        aad.extend_from_slice(&version.to_be_bytes());
-        aad
-    }
-
-    /// Wrap a 32-byte DEK under the master KEK using AES-256-GCM-SIV.
-    /// Output: `[nonce(12) || ciphertext+tag(48)]`.
-    fn wrap_dek(
-        &self,
-        controller: ControllerId,
-        record_kind: &str,
-        version: u32,
-        dek: &[u8; 32],
-    ) -> StoreResult<WrappedDek> {
-        let cipher = AesGcmSiv256;
-        let mut nonce = vec![0u8; cipher.nonce_size()];
-        OsRng.fill_bytes(&mut nonce);
-        let aad = Self::wrap_aad(controller, record_kind, version);
-        let ct = cipher.encrypt(&self.master.0, &nonce, &aad, dek)?;
-
-        let mut wrapped = Vec::with_capacity(nonce.len() + ct.len());
-        wrapped.extend_from_slice(&nonce);
-        wrapped.extend_from_slice(&ct);
-        // The plaintext DEK bytes the caller passed are still in their
-        // own buffer; zeroising that buffer is the caller's
-        // responsibility. The local nonce is not key material — but
-        // zeroising it costs nothing and keeps the discipline uniform.
-        nonce.zeroize();
-        Ok(WrappedDek(wrapped))
-    }
-
-    /// Unwrap a [`WrappedDek`] under the master KEK. Tag failure
-    /// surfaces as [`StoreError::Decrypt`] — indistinguishable from
-    /// "wrong KEK", "tampered AAD", or "corrupted wrap bytes" per the
-    /// AEAD security contract.
-    fn unwrap_dek(
-        &self,
-        controller: ControllerId,
-        record_kind: &str,
-        version: u32,
-        wrapped: &WrappedDek,
-    ) -> StoreResult<Dek> {
-        let cipher = AesGcmSiv256;
-        let nonce_size = cipher.nonce_size();
-        if wrapped.len() < nonce_size {
-            return Err(StoreError::Envelope {
-                reason: "wrapped DEK shorter than nonce length",
-            });
-        }
-        let (nonce, ct) = wrapped.split_at_nonce(nonce_size);
-        let aad = Self::wrap_aad(controller, record_kind, version);
-        let pt = Zeroizing::new(cipher.decrypt(&self.master.0, nonce, &aad, ct)?);
-        if pt.len() != 32 {
-            return Err(StoreError::Envelope {
-                reason: "unwrapped DEK is not 32 bytes",
-            });
-        }
-        let mut dek = [0u8; 32];
-        dek.copy_from_slice(&pt);
-        Ok(Dek(dek))
-    }
-
     /// Compute the next version number for `(controller, record_kind)`
     /// — `max(existing) + 1`, or `1` if no rows exist.
     fn next_version_for(
@@ -397,10 +425,10 @@ impl InMemoryKeyProvider {
 }
 
 impl KeyProvider for InMemoryKeyProvider {
-    fn generate_dek(&self, controller: ControllerId, record_kind: &str) -> StoreResult<u32> {
+    async fn generate_dek(&self, controller: ControllerId, record_kind: &str) -> StoreResult<u32> {
         // Random 32 bytes from OsRng per ADR-022 §G. Wrapped in
         // Zeroizing so the plaintext DEK bytes scrub when this scope
-        // exits, regardless of whether wrap_dek succeeds or fails.
+        // exits, regardless of whether the wrap succeeds or fails.
         let mut dek_bytes = Zeroizing::new([0u8; 32]);
         OsRng.fill_bytes(&mut dek_bytes[..]);
 
@@ -417,7 +445,9 @@ impl KeyProvider for InMemoryKeyProvider {
         }
 
         let version = Self::next_version_for(&wrappings, controller, record_kind);
-        let wrapped = self.wrap_dek(controller, record_kind, version, &dek_bytes)?;
+        let wrapped = self
+            .master
+            .wrap(controller, record_kind, version, &dek_bytes)?;
 
         let key = WrappingKey {
             controller,
@@ -434,7 +464,7 @@ impl KeyProvider for InMemoryKeyProvider {
         Ok(version)
     }
 
-    fn active_dek_for(
+    async fn active_dek_for(
         &self,
         controller: ControllerId,
         record_kind: &str,
@@ -451,11 +481,13 @@ impl KeyProvider for InMemoryKeyProvider {
             version,
         };
         let row = wrappings.get(&key).ok_or(StoreError::NoActiveDek)?;
-        let dek = self.unwrap_dek(controller, record_kind, version, &row.wrapped)?;
+        let dek = self
+            .master
+            .unwrap(controller, record_kind, version, &row.wrapped)?;
         Ok((dek, version))
     }
 
-    fn dek_at_version(
+    async fn dek_at_version(
         &self,
         controller: ControllerId,
         record_kind: &str,
@@ -473,10 +505,15 @@ impl KeyProvider for InMemoryKeyProvider {
         let row = wrappings.get(&key).ok_or(StoreError::NoSuchDekVersion {
             version: dek_version,
         })?;
-        self.unwrap_dek(controller, record_kind, dek_version, &row.wrapped)
+        self.master
+            .unwrap(controller, record_kind, dek_version, &row.wrapped)
     }
 
-    fn rotate_dek(&self, controller: ControllerId, record_kind: &str) -> StoreResult<(u32, u32)> {
+    async fn rotate_dek(
+        &self,
+        controller: ControllerId,
+        record_kind: &str,
+    ) -> StoreResult<(u32, u32)> {
         let mut dek_bytes = Zeroizing::new([0u8; 32]);
         OsRng.fill_bytes(&mut dek_bytes[..]);
 
@@ -488,7 +525,9 @@ impl KeyProvider for InMemoryKeyProvider {
         let retired_version = Self::find_active_version(&wrappings, controller, record_kind)
             .ok_or(StoreError::NoActiveDek)?;
         let new_version = Self::next_version_for(&wrappings, controller, record_kind);
-        let wrapped = self.wrap_dek(controller, record_kind, new_version, &dek_bytes)?;
+        let wrapped = self
+            .master
+            .wrap(controller, record_kind, new_version, &dek_bytes)?;
 
         // Atomic: retire the prior active and insert the new active
         // under one write-lock acquisition. In the sqlx impl this same
@@ -519,7 +558,7 @@ impl KeyProvider for InMemoryKeyProvider {
         Ok((new_version, retired_version))
     }
 
-    fn shred_dek(
+    async fn shred_dek(
         &self,
         controller: ControllerId,
         record_kind: &str,

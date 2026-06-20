@@ -311,6 +311,40 @@ impl Envelope {
         let aad = compose_aad(algo_id, dek_version, nonce_len, aad_record);
         cipher.decrypt(&key, nonce, &aad, ciphertext)
     }
+
+    /// Parse the `dek_version` from an envelope header without
+    /// decrypting. Useful when the caller needs to resolve the wrapped
+    /// DEK (typically via async [`crate::key_provider::KeyProvider::dek_at_version`])
+    /// before constructing the sync `key_for` closure that
+    /// [`Envelope::decrypt`] consumes.
+    ///
+    /// Performs only the version-prefix checks ([`HEADER_LEN`] bytes
+    /// minimum; rejects legacy `0x01` per ADR-023 §B) — full envelope
+    /// validation still happens at decrypt time.
+    pub fn peek_dek_version(envelope: &[u8]) -> StoreResult<u32> {
+        if envelope.len() < HEADER_LEN {
+            return Err(StoreError::Envelope {
+                reason: "envelope shorter than 7-byte header",
+            });
+        }
+        let version = envelope[0];
+        if version == 0x01 {
+            return Err(StoreError::Envelope {
+                reason: "legacy envelope format 0x01 — pre-ADR-023 envelopes are not readable",
+            });
+        }
+        if version != ENVELOPE_VERSION {
+            return Err(StoreError::Envelope {
+                reason: "unsupported envelope version",
+            });
+        }
+        Ok(u32::from_be_bytes([
+            envelope[2],
+            envelope[3],
+            envelope[4],
+            envelope[5],
+        ]))
+    }
 }
 
 /// Compose the AAD per ADR-022 §C as refined by ADR-023 §B: header bytes
