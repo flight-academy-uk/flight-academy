@@ -177,7 +177,7 @@ pub async fn tenant_patch(
     // that surfaces as 404, as the next read would.
     let updated = db
         .update_tenant(
-            &tenant,
+            tenant.id,
             req.name.as_deref(),
             req.settings.as_ref(),
             subject.user_id,

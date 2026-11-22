@@ -12,18 +12,16 @@ pub enum Error {
     Sqlx(sqlx::Error),
     Migrate(sqlx::migrate::MigrateError),
     /// The pool's session role does not meet the audit chain writer's
-    /// invariant (see `audit::verify_pool_role`). The `bypasses_rls`
-    /// field is the silent-failure axis: without RLS bypass, the
-    /// `prev_hash` SELECT is filtered to nothing and every row becomes a
-    /// new "first" entry — the chain forks without surfacing an error
-    /// at the write site. INSERT and SELECT grant deficits would
-    /// surface as Sqlx errors at first write, but pre-flighting them
-    /// at startup turns first-traffic noise into refuse-to-start.
+    /// invariant (see `audit::verify_pool_role`). Each field names one
+    /// capability the writer needs. Every deficit would surface as an
+    /// error at the first audited write; pre-flighting them at startup
+    /// turns first-traffic failures into refuse-to-start.
     #[from(skip)]
     AuditPoolRoleUnfit {
         role: String,
         can_insert: bool,
         can_select: bool,
+        can_write_heads: bool,
         bypasses_rls: bool,
     },
 }

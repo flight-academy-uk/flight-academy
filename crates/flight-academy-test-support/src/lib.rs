@@ -9,9 +9,9 @@
 //! - **Fresh database per test**, created inside the shared container with
 //!   a UUID-suffixed name. Migrations applied automatically.
 //! - The pattern sidesteps `sqlx::test`'s implicit transaction-rollback,
-//!   which would interact poorly with the `SET LOCAL ROLE app_api` inside
-//!   `Db::begin_tenant` (the outer rollback would undo the role drop the
-//!   tx depends on).
+//!   which would interact poorly with the transaction-local role switch
+//!   (`set_config('role', 'app_api', true)`) inside `Db::begin_tenant`: the
+//!   outer rollback would undo the role change the transaction depends on.
 #![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use std::collections::BTreeSet;

@@ -76,6 +76,25 @@ CREATE TABLE public._sqlx_migrations (
 
 
 --
+-- Name: audit_chain_heads; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_chain_heads (
+    chain_kind text NOT NULL,
+    chain_id uuid,
+    seq bigint DEFAULT 0 NOT NULL,
+    tip_hash bytea,
+    last_occurred_at timestamp with time zone,
+    CONSTRAINT audit_chain_heads_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text]))),
+    CONSTRAINT audit_chain_heads_empty CHECK (((seq = 0) = (tip_hash IS NULL))),
+    CONSTRAINT audit_chain_heads_platform_id CHECK (((chain_kind = 'platform'::text) = (chain_id IS NULL))),
+    CONSTRAINT audit_chain_heads_seq_check CHECK ((seq >= 0))
+);
+
+ALTER TABLE ONLY public.audit_chain_heads FORCE ROW LEVEL SECURITY;
+
+
+--
 -- Name: audit_events; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -660,6 +679,14 @@ ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_1
 
 ALTER TABLE ONLY public._sqlx_migrations
     ADD CONSTRAINT _sqlx_migrations_pkey PRIMARY KEY (version);
+
+
+--
+-- Name: audit_chain_heads audit_chain_heads_chain_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_chain_heads
+    ADD CONSTRAINT audit_chain_heads_chain_key UNIQUE NULLS NOT DISTINCT (chain_kind, chain_id);
 
 
 --
@@ -1300,6 +1327,12 @@ CREATE TRIGGER tenants_bump_updated_at BEFORE UPDATE ON public.tenants FOR EACH 
 ALTER TABLE ONLY public.tenant_dek_wrappings
     ADD CONSTRAINT tenant_dek_wrappings_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenants(id) ON DELETE CASCADE;
 
+
+--
+-- Name: audit_chain_heads; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.audit_chain_heads ENABLE ROW LEVEL SECURITY;
 
 --
 -- Name: audit_events; Type: ROW SECURITY; Schema: public; Owner: -

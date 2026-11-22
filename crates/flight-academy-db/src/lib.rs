@@ -17,8 +17,12 @@ pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;
 
-use std::future::Future;
-use std::pin::Pin;
+// `test-util` exposes `Db::pool()` to tests. Production code must never use
+// the raw pool, so an optimised build with the feature on does not compile.
+// CI enables it only for debug builds (clippy and tests use --all-features).
+#[cfg(all(feature = "test-util", not(debug_assertions)))]
+compile_error!("the `test-util` feature exposes Db::pool(); never enable it in a release build");
+
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -26,19 +30,7 @@ use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-/// Attempts for a SERIALIZABLE unit before a serialization failure is
-/// returned to the caller.
-const MAX_SERIALIZABLE_ATTEMPTS: u32 = 3;
-const SQLSTATE_SERIALIZATION_FAILURE: &str = "40001";
-
 pub(crate) type Tx = Transaction<'static, Postgres>;
-
-/// What a transactional unit returns to [`Db::serializable`]: the
-/// transaction it was given, handed back for commit, and its result. Taking
-/// the transaction by value (rather than borrowing a connection) lets the
-/// unit borrow the caller's arguments; boxing it as `Send` lets it run
-/// inside axum handlers.
-pub(crate) type TxUnit<'a, T> = Pin<Box<dyn Future<Output = (Tx, Result<T>)> + Send + 'a>>;
 
 /// Embedded migrator. Returned as a value so `flight-academy-test-support`
 /// can drive migrations against a fresh per-test database without needing
@@ -100,42 +92,24 @@ impl Db {
         &self.pool
     }
 
-    /// Run `op` in a SERIALIZABLE transaction, retrying the whole unit when
-    /// PostgreSQL reports a serialization failure (SQLSTATE 40001), which can
-    /// surface at any statement or at commit. Other errors propagate.
-    pub(crate) async fn serializable<'a, T>(
-        &self,
-        what: &'static str,
-        tenant_id: Uuid,
-        mut unit: impl FnMut(Tx) -> TxUnit<'a, T>,
-    ) -> Result<T> {
-        for attempt in 1..=MAX_SERIALIZABLE_ATTEMPTS {
-            let tx = self
-                .pool
-                .begin_with("BEGIN ISOLATION LEVEL SERIALIZABLE")
-                .await?;
-            let (tx, result) = unit(tx).await;
-            let outcome = match result {
-                Ok(value) => tx.commit().await.map(|()| value).map_err(Error::from),
-                Err(err) => Err(err),
-            };
-            match outcome {
-                Err(Error::Sqlx(sqlx::Error::Database(db_err)))
-                    if db_err.code().as_deref() == Some(SQLSTATE_SERIALIZATION_FAILURE)
-                        && attempt < MAX_SERIALIZABLE_ATTEMPTS =>
-                {
-                    tracing::warn!(
-                        %tenant_id,
-                        attempt,
-                        max_attempts = MAX_SERIALIZABLE_ATTEMPTS,
-                        what,
-                        "serialization failure; retrying"
-                    );
-                }
-                other => return other,
-            }
-        }
-        unreachable!("the last attempt always returns");
+    /// Begin a transaction for a write that appends to an audit chain.
+    ///
+    /// The isolation level is stated explicitly as READ COMMITTED rather
+    /// than left to the server's `default_transaction_isolation`: the audit
+    /// writer serialises appends by locking the chain's head row, and under
+    /// REPEATABLE READ or SERIALIZABLE a writer that waited on that lock
+    /// would fail with a serialization error once the holder commits,
+    /// instead of carrying on from the new tip. A wait on the lock counts
+    /// towards the pool's `statement_timeout`.
+    ///
+    /// The transaction runs on the pool's session role, not `begin_tenant`'s
+    /// `app_api`: audit chain writes need it (see the pool-role invariant on
+    /// [`Db::write_tenant_audit_event`]).
+    pub(crate) async fn begin_audited(&self) -> Result<Tx> {
+        Ok(self
+            .pool
+            .begin_with("BEGIN ISOLATION LEVEL READ COMMITTED")
+            .await?)
     }
 
     /// Apply all pending migrations from the embedded set
