@@ -42,11 +42,12 @@ The trace ID is 128 random bits and carries no timestamp, unlike the UUID v7 use
 - At the edge, a client's `traceparent` and `tracestate` are removed before the request reaches the gateway (a Cloudflare request-header rule in the hosted deployment). An incoming `traceparent` would let a client choose the trace ID, and its sampled flag would let a client force every request to be traced, turning tracing cost into a resource-exhaustion vector.
 - The application reads `traceparent` according to the setting `FA_TRACEPARENT_TRUST` (flag `--traceparent-trust`):
 
-| Setting | Behaviour | Default for |
+| Setting | Behaviour | Used by |
 | --- | --- | --- |
-| `none` | Ignore any incoming `traceparent`; start a new trace | Self-host |
-| `upstream` | Continue the incoming trace | Hosted, when the preconditions below hold |
+| `none` | Ignore any incoming `traceparent`; start a new trace | The default when the setting is unset; self-host |
+| `upstream` | Continue the incoming trace | Set explicitly in hosted manifests, only when the preconditions below hold |
 
+- If the setting is unset, it is `none`: the binary cannot tell where it is deployed, so it never trusts an incoming `traceparent` unless told to.
 - `upstream` is used only when all of these hold in the deployment:
   1. **No path to the gateway bypasses Cloudflare.** Cloudflare runs in SSL mode Full (strict), every hop from Cloudflare to the load balancer and on to the Istio gateway is mutually authenticated, and the gateway accepts connections only with Cloudflare's client certificate. No direct load-balancer-to-gateway path is exposed.
   2. **Cloudflare removes client `traceparent` and `tracestate`** before forwarding.
@@ -76,7 +77,7 @@ Span attributes follow the same rules as logs ([ADR-004 §B](ADR-004-defence-in-
 
 ### Positive
 
-- One identifier connects a user's support reference, the error they saw, the log lines, the distributed trace and any audit row.
+- One identifier connects a user's support reference, the error they saw, the log lines, the distributed trace and any record that stores it (§A).
 - A client cannot choose the ID or force sampling.
 - Self-hosted installs get the same behaviour without a mesh, and export nothing unless configured.
 
