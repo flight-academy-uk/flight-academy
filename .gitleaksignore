@@ -13,8 +13,7 @@ CONTRIBUTING.md:personal-tilde-dotfile-path:43
 # cargo-deny convention for locating the local RustSec advisory DB.
 deny.toml:personal-tilde-dotfile-path:27
 
-# .github/workflows/ci.yml L80 — comment documenting Swatinem/rust-cache's
-# scope: caches `~/.cargo/{registry,git}` + `target/`. Standard Rust path.
-# (Was L55 before the MASH foundations PR inserted Bun setup steps ahead
-# of the Rust cache step.)
-.github/workflows/ci.yml:personal-tilde-dotfile-path:80
+# .github/workflows/ci.yml: the comment documenting Swatinem/rust-cache's
+# scope (`~/.cargo/{registry,git}` + `target/`) carries an inline
+# `gitleaks:allow` marker instead of a fingerprint here, because steps are
+# added above it often enough that a line-number fingerprint kept going stale.
