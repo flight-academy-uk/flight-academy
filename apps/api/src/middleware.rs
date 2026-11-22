@@ -193,10 +193,12 @@ fn request_id_of<B>(req: &axum::http::Request<B>) -> &str {
 }
 
 /// Run the rest of the stack with the request ID in task-local scope, so
-/// `ApiError` can put it in `ProblemDetails.request_id`.
+/// `ApiError` can put it in `ProblemDetails.request_id`, then make sure any
+/// other error response is problem+json too.
 pub async fn request_scope(req: Request, next: Next) -> Response {
     let id = request_id_of(&req).to_owned();
-    REQUEST_ID.scope(id, next.run(req)).await
+    let response = REQUEST_ID.scope(id.clone(), next.run(req)).await;
+    crate::error::ensure_problem_json(response, &id)
 }
 
 /// Span for `TraceLayer`: request ID, method and route template. The raw

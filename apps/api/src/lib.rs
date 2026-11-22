@@ -49,8 +49,6 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 )]
 struct ApiDoc;
 
-/// The assembled router and its OpenAPI document. Returned as a named pair
-/// so callers can pick the half they need without touching tuple indices.
 /// Router settings, built once at startup by the `serve` command.
 #[derive(Clone, Debug)]
 pub struct AppConfig {
@@ -72,6 +70,8 @@ impl Default for AppConfig {
     }
 }
 
+/// The assembled router and its OpenAPI document. Returned as a named pair
+/// so callers can pick the half they need without touching tuple indices.
 struct Built {
     router: axum::Router,
     openapi: utoipa::openapi::OpenApi,

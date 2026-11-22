@@ -120,22 +120,77 @@ impl ApiError {
     }
 }
 
+const PROBLEM_JSON: &str = "application/problem+json";
+
+fn problem(
+    status: StatusCode,
+    slug: &str,
+    title: &str,
+    detail: Option<String>,
+    request_id: Option<String>,
+) -> Response {
+    let body = ProblemDetails {
+        type_uri: format!("{TYPE_BASE}{slug}"),
+        title: title.to_string(),
+        status: status.as_u16(),
+        detail,
+        instance: None,
+        request_id,
+    };
+    let mut response = (status, Json(body)).into_response();
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(PROBLEM_JSON),
+    );
+    response
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, slug, title, detail) = self.classify();
-        let body = ProblemDetails {
-            type_uri: format!("{TYPE_BASE}{slug}"),
-            title: title.to_string(),
-            status: status.as_u16(),
+        problem(
+            status,
+            slug,
+            title,
             detail,
-            instance: None,
-            request_id: crate::middleware::current_request_id(),
-        };
-        let mut response = (status, Json(body)).into_response();
-        response.headers_mut().insert(
-            header::CONTENT_TYPE,
-            header::HeaderValue::from_static("application/problem+json"),
-        );
-        response
+            crate::middleware::current_request_id(),
+        )
     }
+}
+
+/// Rewrite an error response that is not already problem+json (the 408 from
+/// the request timeout, axum's plain-text extractor rejections such as 413,
+/// 415 and 422) into problem+json carrying `request_id`. The original body is
+/// dropped: extractor rejection text can echo fragments of the request.
+/// Headers other than the content headers are kept (for example `Allow`).
+pub(crate) fn ensure_problem_json(response: Response, request_id: &str) -> Response {
+    let status = response.status();
+    let is_problem = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .is_some_and(|v| v.as_bytes().starts_with(PROBLEM_JSON.as_bytes()));
+    if !(status.is_client_error() || status.is_server_error()) || is_problem {
+        return response;
+    }
+    let slug = match status {
+        StatusCode::BAD_REQUEST => "bad-request",
+        StatusCode::NOT_FOUND => "not-found",
+        StatusCode::METHOD_NOT_ALLOWED => "method-not-allowed",
+        StatusCode::REQUEST_TIMEOUT => "request-timeout",
+        StatusCode::PAYLOAD_TOO_LARGE => "payload-too-large",
+        StatusCode::UNSUPPORTED_MEDIA_TYPE => "unsupported-media-type",
+        StatusCode::UNPROCESSABLE_ENTITY => "unprocessable-entity",
+        StatusCode::TOO_MANY_REQUESTS => "too-many-requests",
+        s if s.is_server_error() => "internal",
+        _ => "client-error",
+    };
+    let title = status.canonical_reason().unwrap_or("Error");
+    let (mut parts, _) = response.into_parts();
+    let rebuilt = problem(status, slug, title, None, Some(request_id.to_owned()));
+    let (new_parts, body) = rebuilt.into_parts();
+    parts.headers.remove(header::CONTENT_LENGTH);
+    for (name, value) in &new_parts.headers {
+        parts.headers.insert(name, value.clone());
+    }
+    Response::from_parts(parts, body)
 }

@@ -241,7 +241,10 @@ async fn migrate(args: DatabaseArgs) -> Result<()> {
 /// Resolves on SIGTERM (what Kubernetes sends) or Ctrl-C.
 async fn shutdown_signal() {
     let ctrl_c = async {
-        let _ = tokio::signal::ctrl_c().await;
+        if tokio::signal::ctrl_c().await.is_err() {
+            tracing::warn!("could not install the Ctrl-C handler; relying on SIGTERM");
+            std::future::pending::<()>().await;
+        }
     };
     #[cfg(unix)]
     let terminate = async {
@@ -249,7 +252,10 @@ async fn shutdown_signal() {
             Ok(mut signal) => {
                 signal.recv().await;
             }
-            Err(_) => std::future::pending::<()>().await,
+            Err(_) => {
+                tracing::warn!("could not install the SIGTERM handler; relying on Ctrl-C");
+                std::future::pending::<()>().await;
+            }
         }
     };
     #[cfg(not(unix))]
