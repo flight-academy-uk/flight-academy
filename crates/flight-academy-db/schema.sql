@@ -137,6 +137,346 @@ CREATE TABLE public.audit_events_2026_07 (
 
 
 --
+-- Name: audit_events_2026_08; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2026_08 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2026_09; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2026_09 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2026_10; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2026_10 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2026_11; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2026_11 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2026_12; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2026_12 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_01; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_01 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_02; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_02 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_03; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_03 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_04; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_04 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_05; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_05 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_06; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_06 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_07; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_07 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_08; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_08 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_09; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_09 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_10; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_10 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_11; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_11 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
+-- Name: audit_events_2027_12; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.audit_events_2027_12 (
+    id uuid DEFAULT gen_random_uuid() CONSTRAINT audit_events_id_not_null NOT NULL,
+    occurred_at timestamp with time zone DEFAULT now() CONSTRAINT audit_events_occurred_at_not_null NOT NULL,
+    actor_class text CONSTRAINT audit_events_actor_class_not_null NOT NULL,
+    actor_id uuid,
+    tenant_id uuid,
+    chain_kind text CONSTRAINT audit_events_chain_kind_not_null NOT NULL,
+    chain_id uuid,
+    prev_hash bytea,
+    payload jsonb CONSTRAINT audit_events_payload_not_null NOT NULL,
+    payload_hash bytea CONSTRAINT audit_events_payload_hash_not_null NOT NULL,
+    CONSTRAINT audit_events_actor_class_check CHECK ((actor_class = ANY (ARRAY['member'::text, 'staff'::text, 'system'::text]))),
+    CONSTRAINT audit_events_chain_kind_check CHECK ((chain_kind = ANY (ARRAY['tenant'::text, 'user'::text, 'platform'::text])))
+);
+
+
+--
 -- Name: tenant_dek_wrappings; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -196,6 +536,125 @@ ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_0
 
 
 --
+-- Name: audit_events_2026_08; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_08 FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2026_09; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_09 FOR VALUES FROM ('2026-09-01 00:00:00+00') TO ('2026-10-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2026_10; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_10 FOR VALUES FROM ('2026-10-01 00:00:00+00') TO ('2026-11-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2026_11; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_11 FOR VALUES FROM ('2026-11-01 00:00:00+00') TO ('2026-12-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2026_12; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2026_12 FOR VALUES FROM ('2026-12-01 00:00:00+00') TO ('2027-01-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_01; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_01 FOR VALUES FROM ('2027-01-01 00:00:00+00') TO ('2027-02-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_02; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_02 FOR VALUES FROM ('2027-02-01 00:00:00+00') TO ('2027-03-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_03; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_03 FOR VALUES FROM ('2027-03-01 00:00:00+00') TO ('2027-04-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_04; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_04 FOR VALUES FROM ('2027-04-01 00:00:00+00') TO ('2027-05-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_05; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_05 FOR VALUES FROM ('2027-05-01 00:00:00+00') TO ('2027-06-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_06; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_06 FOR VALUES FROM ('2027-06-01 00:00:00+00') TO ('2027-07-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_07; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_07 FOR VALUES FROM ('2027-07-01 00:00:00+00') TO ('2027-08-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_08; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_08 FOR VALUES FROM ('2027-08-01 00:00:00+00') TO ('2027-09-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_09; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_09 FOR VALUES FROM ('2027-09-01 00:00:00+00') TO ('2027-10-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_10; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_10 FOR VALUES FROM ('2027-10-01 00:00:00+00') TO ('2027-11-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_11; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_11 FOR VALUES FROM ('2027-11-01 00:00:00+00') TO ('2027-12-01 00:00:00+00');
+
+
+--
+-- Name: audit_events_2027_12; Type: TABLE ATTACH; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events ATTACH PARTITION public.audit_events_2027_12 FOR VALUES FROM ('2027-12-01 00:00:00+00') TO ('2028-01-01 00:00:00+00');
+
+
+--
 -- Name: _sqlx_migrations _sqlx_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -225,6 +684,142 @@ ALTER TABLE ONLY public.audit_events_2026_06
 
 ALTER TABLE ONLY public.audit_events_2026_07
     ADD CONSTRAINT audit_events_2026_07_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2026_08 audit_events_2026_08_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2026_08
+    ADD CONSTRAINT audit_events_2026_08_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2026_09 audit_events_2026_09_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2026_09
+    ADD CONSTRAINT audit_events_2026_09_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2026_10 audit_events_2026_10_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2026_10
+    ADD CONSTRAINT audit_events_2026_10_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2026_11 audit_events_2026_11_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2026_11
+    ADD CONSTRAINT audit_events_2026_11_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2026_12 audit_events_2026_12_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2026_12
+    ADD CONSTRAINT audit_events_2026_12_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_01 audit_events_2027_01_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_01
+    ADD CONSTRAINT audit_events_2027_01_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_02 audit_events_2027_02_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_02
+    ADD CONSTRAINT audit_events_2027_02_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_03 audit_events_2027_03_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_03
+    ADD CONSTRAINT audit_events_2027_03_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_04 audit_events_2027_04_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_04
+    ADD CONSTRAINT audit_events_2027_04_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_05 audit_events_2027_05_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_05
+    ADD CONSTRAINT audit_events_2027_05_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_06 audit_events_2027_06_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_06
+    ADD CONSTRAINT audit_events_2027_06_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_07 audit_events_2027_07_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_07
+    ADD CONSTRAINT audit_events_2027_07_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_08 audit_events_2027_08_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_08
+    ADD CONSTRAINT audit_events_2027_08_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_09 audit_events_2027_09_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_09
+    ADD CONSTRAINT audit_events_2027_09_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_10 audit_events_2027_10_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_10
+    ADD CONSTRAINT audit_events_2027_10_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_11 audit_events_2027_11_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_11
+    ADD CONSTRAINT audit_events_2027_11_pkey PRIMARY KEY (occurred_at, id);
+
+
+--
+-- Name: audit_events_2027_12 audit_events_2027_12_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.audit_events_2027_12
+    ADD CONSTRAINT audit_events_2027_12_pkey PRIMARY KEY (occurred_at, id);
 
 
 --
@@ -262,6 +857,125 @@ CREATE INDEX audit_events_2026_06_chain_kind_chain_id_occurred_at_idx ON public.
 --
 
 CREATE INDEX audit_events_2026_07_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_07 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2026_08_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2026_08_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_08 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2026_09_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2026_09_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_09 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2026_10_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2026_10_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_10 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2026_11_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2026_11_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_11 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2026_12_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2026_12_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2026_12 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_01_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_01_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_01 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_02_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_02_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_02 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_03_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_03_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_03 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_04_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_04_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_04 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_05_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_05_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_05 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_06_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_06_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_06 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_07_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_07_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_07 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_08_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_08_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_08 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_09_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_09_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_09 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_10_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_10_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_10 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_11_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_11_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_11 USING btree (chain_kind, chain_id, occurred_at);
+
+
+--
+-- Name: audit_events_2027_12_chain_kind_chain_id_occurred_at_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX audit_events_2027_12_chain_kind_chain_id_occurred_at_idx ON public.audit_events_2027_12 USING btree (chain_kind, chain_id, occurred_at);
 
 
 --
@@ -311,6 +1025,244 @@ ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2
 --
 
 ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_07_pkey;
+
+
+--
+-- Name: audit_events_2026_08_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2026_08_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2026_08_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_08_pkey;
+
+
+--
+-- Name: audit_events_2026_09_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2026_09_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2026_09_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_09_pkey;
+
+
+--
+-- Name: audit_events_2026_10_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2026_10_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2026_10_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_10_pkey;
+
+
+--
+-- Name: audit_events_2026_11_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2026_11_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2026_11_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_11_pkey;
+
+
+--
+-- Name: audit_events_2026_12_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2026_12_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2026_12_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2026_12_pkey;
+
+
+--
+-- Name: audit_events_2027_01_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_01_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_01_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_01_pkey;
+
+
+--
+-- Name: audit_events_2027_02_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_02_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_02_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_02_pkey;
+
+
+--
+-- Name: audit_events_2027_03_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_03_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_03_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_03_pkey;
+
+
+--
+-- Name: audit_events_2027_04_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_04_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_04_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_04_pkey;
+
+
+--
+-- Name: audit_events_2027_05_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_05_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_05_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_05_pkey;
+
+
+--
+-- Name: audit_events_2027_06_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_06_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_06_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_06_pkey;
+
+
+--
+-- Name: audit_events_2027_07_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_07_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_07_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_07_pkey;
+
+
+--
+-- Name: audit_events_2027_08_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_08_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_08_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_08_pkey;
+
+
+--
+-- Name: audit_events_2027_09_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_09_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_09_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_09_pkey;
+
+
+--
+-- Name: audit_events_2027_10_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_10_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_10_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_10_pkey;
+
+
+--
+-- Name: audit_events_2027_11_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_11_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_11_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_11_pkey;
+
+
+--
+-- Name: audit_events_2027_12_chain_kind_chain_id_occurred_at_idx; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_chain_idx ATTACH PARTITION public.audit_events_2027_12_chain_kind_chain_id_occurred_at_idx;
+
+
+--
+-- Name: audit_events_2027_12_pkey; Type: INDEX ATTACH; Schema: public; Owner: -
+--
+
+ALTER INDEX public.audit_events_pkey ATTACH PARTITION public.audit_events_2027_12_pkey;
 
 
 --
