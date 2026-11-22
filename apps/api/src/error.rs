@@ -162,7 +162,11 @@ impl IntoResponse for ApiError {
 /// the request timeout, axum's plain-text extractor rejections such as 413,
 /// 415 and 422) into problem+json carrying `request_id`. The original body is
 /// dropped: extractor rejection text can echo fragments of the request.
-/// Headers other than the content headers are kept (for example `Allow`).
+/// `Content-Type`, `Content-Length`, `Content-Encoding` and `Content-Range`
+/// describe the old body and are replaced or removed; other headers are kept
+/// (for example `Allow`). This applies to every route, including the HTML and
+/// `/static` routes, whose errors become problem+json until HTML error pages
+/// exist.
 pub(crate) fn ensure_problem_json(response: Response, request_id: &str) -> Response {
     let status = response.status();
     let is_problem = response
@@ -188,9 +192,52 @@ pub(crate) fn ensure_problem_json(response: Response, request_id: &str) -> Respo
     let (mut parts, _) = response.into_parts();
     let rebuilt = problem(status, slug, title, None, Some(request_id.to_owned()));
     let (new_parts, body) = rebuilt.into_parts();
-    parts.headers.remove(header::CONTENT_LENGTH);
+    for stale in [
+        header::CONTENT_LENGTH,
+        header::CONTENT_ENCODING,
+        header::CONTENT_RANGE,
+    ] {
+        parts.headers.remove(stale);
+    }
     for (name, value) in &new_parts.headers {
         parts.headers.insert(name, value.clone());
     }
     Response::from_parts(parts, body)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewritten_error_drops_stale_content_headers_and_keeps_others() {
+        let inner = Response::builder()
+            .status(StatusCode::METHOD_NOT_ALLOWED)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .header(header::CONTENT_ENCODING, "br")
+            .header(header::CONTENT_RANGE, "bytes 0-3/4")
+            .header(header::CONTENT_LENGTH, "4")
+            .header(header::ALLOW, "GET")
+            .body(axum::body::Body::from("nope"))
+            .unwrap();
+
+        let out = ensure_problem_json(inner, "req-1");
+        let h = out.headers();
+        assert_eq!(out.status(), StatusCode::METHOD_NOT_ALLOWED);
+        assert_eq!(h.get(header::CONTENT_TYPE).unwrap(), PROBLEM_JSON);
+        assert!(h.get(header::CONTENT_ENCODING).is_none());
+        assert!(h.get(header::CONTENT_RANGE).is_none());
+        assert_eq!(h.get(header::ALLOW).unwrap(), "GET");
+    }
+
+    #[test]
+    fn problem_json_and_success_responses_pass_through() {
+        let ok = Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_ENCODING, "br")
+            .body(axum::body::Body::empty())
+            .unwrap();
+        let out = ensure_problem_json(ok, "req-1");
+        assert_eq!(out.headers().get(header::CONTENT_ENCODING).unwrap(), "br");
+    }
 }
