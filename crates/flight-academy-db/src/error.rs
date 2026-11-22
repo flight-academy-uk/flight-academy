@@ -19,6 +19,7 @@ pub enum Error {
     /// at the write site. INSERT and SELECT grant deficits would
     /// surface as Sqlx errors at first write, but pre-flighting them
     /// at startup turns first-traffic noise into refuse-to-start.
+    #[from(skip)]
     AuditPoolRoleUnfit {
         role: String,
         can_insert: bool,

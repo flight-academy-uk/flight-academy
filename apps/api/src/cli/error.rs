@@ -18,6 +18,7 @@ pub enum Error {
     Io(std::io::Error),
     Db(flight_academy_db::Error),
     Json(serde_json::Error),
+    #[from(skip)]
     EnvVar {
         name: &'static str,
         source: std::env::VarError,
