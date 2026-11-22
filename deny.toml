@@ -35,10 +35,12 @@ ignore = [
     "RUSTSEC-2024-0436",
     # RUSTSEC-2026-0440 — `astral-tokio-tar` is unmaintained (Astral ended
     # maintenance 2026-11-03). Pulled transitively via `testcontainers`
-    # (0.27 and 0.28 both depend on it) through `flight-academy-test-support`.
-    # Dev-dependency only: used to talk to the local container runtime in
-    # integration tests, never linked into the shipped binary. Re-evaluate
-    # when testcontainers moves to a maintained tar crate.
+    # 0.27 (through `testcontainers-modules` 0.15); the latest release,
+    # 0.28, still depends on it, so upgrading does not remove it. Reached
+    # only through `flight-academy-test-support`, a test-only workspace
+    # member consumed solely as a dev-dependency and never linked into the
+    # release binary. Re-evaluate when testcontainers moves to a
+    # maintained tar crate.
     "RUSTSEC-2026-0440",
 ]
 
