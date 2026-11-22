@@ -51,6 +51,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Action pins
+        # Every third-party action must be pinned to a full commit SHA.
+        run: scripts/check-action-pins.sh
+
       - name: Set up Bun
         # `apps/api/build.rs` invokes Bun + @tailwindcss/cli to compile the
         # MASH web surface's stylesheet (ADR-020 §O). Bun is therefore a
