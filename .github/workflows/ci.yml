@@ -47,7 +47,7 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: Check out code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -65,7 +65,7 @@ jobs:
         # Caches Bun's global tarball cache (not node_modules — keying that
         # on bun.lock is fragile, and `bun install` is fast when the global
         # cache is warm). Same posture as the deleted Web CI cache step.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.HOME }}/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ hashFiles('apps/api/bun.lock') }}
@@ -80,7 +80,7 @@ jobs:
         # Caches ~/.cargo/{registry,git} + target/ keyed on Cargo.lock +
         # workspace fingerprint. PR caches scope to the PR's branch; they
         # cannot poison main's cache (GitHub's documented cache scoping).
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Show toolchain
         run: |
@@ -122,7 +122,7 @@ jobs:
       CARGO_TERM_COLOR: always
     steps:
       - name: Check out code
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -134,7 +134,7 @@ jobs:
           bun-version: '1.3.1'
 
       - name: Cache Bun install
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ env.HOME }}/.bun/install/cache
           key: bun-install-${{ runner.os }}-${{ hashFiles('apps/api/bun.lock') }}
@@ -146,7 +146,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Rust build cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: cargo test
         # Tests use testcontainers; the runner already has Docker. The
