@@ -27,13 +27,13 @@ path = "src/main.rs"
 embedded-static = ["dep:rust-embed"]
 
 [dependencies]
-axum = { version = "0.8.9", features = ["macros"] }
-clap = { version = "4.6.1", features = ["derive"] }
-derive_more = { version = "2.1.1", features = ["from"] }
-flight-academy-auth = { version = "0.1.0", path = "../../crates/flight-academy-auth" }
-flight-academy-core = { version = "0.1.0", path = "../../crates/flight-academy-core" }
-flight-academy-db = { version = "0.1.0", path = "../../crates/flight-academy-db" }
-maud = { version = "0.27.0", features = ["axum"] }
+axum = { workspace = true, features = ["macros"] }
+clap = { workspace = true, features = ["derive"] }
+derive_more = { workspace = true, features = ["from"] }
+flight-academy-auth = { workspace = true }
+flight-academy-core = { workspace = true }
+flight-academy-db = { workspace = true }
+maud = { workspace = true, features = ["axum"] }
 # rust-embed bakes `apps/api/static/` into the binary under
 # `--features embedded-static` per ADR-020 §O (self-host single-binary
 # distribution variant). `debug-embed` forces compile-time embedding under
@@ -42,23 +42,23 @@ maud = { version = "0.27.0", features = ["axum"] }
 # (we want the test to exercise the same code path that ships). `mime-guess`
 # enables `Metadata::mimetype()` so the embedded handler emits the right
 # `Content-Type` without us hand-maintaining an extension → MIME map.
-rust-embed = { version = "8.11.0", optional = true, features = ["debug-embed", "mime-guess"] }
-serde = { version = "1.0.228", features = ["derive"] }
-serde_json = "1.0.150"
-sqlx = { version = "0.9.0", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "macros"] }
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
-tower = "0.5.3"
-tower-http = { version = "0.6.11", features = ["fs", "request-id", "set-header", "trace", "compression-br", "compression-gzip", "compression-zstd"] }
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
-utoipa = { version = "5.5.0", features = ["axum_extras", "uuid"] }
-utoipa-axum = "0.2.0"
-uuid = { version = "1.23.2", features = ["serde", "v7"] }
+rust-embed = { workspace = true, optional = true, features = ["debug-embed", "mime-guess"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sqlx = { workspace = true, features = ["macros"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["fs", "request-id", "set-header", "trace", "compression-br", "compression-gzip", "compression-zstd"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+utoipa = { workspace = true, features = ["axum_extras", "uuid"] }
+utoipa-axum = { workspace = true }
+uuid = { workspace = true, features = ["serde", "v7"] }
 
 [dev-dependencies]
-flight-academy-test-support = { version = "0.1.0", path = "../../crates/flight-academy-test-support" }
-http-body-util = "0.1.3"
-tower = { version = "0.5.3", features = ["util"] }
+flight-academy-test-support = { workspace = true }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }
 
 [build-dependencies]
 # Content-hash served assets so URLs like `/static/app-<hash>.css` can carry
@@ -69,7 +69,7 @@ tower = { version = "0.5.3", features = ["util"] }
 # enough to avoid collisions across the ~10 vendored assets) but it is a
 # workspace-known dependency we already pull in via the audit-chain code,
 # so reusing it keeps the build-deps minimal.
-sha2 = "0.11"
+sha2 = { workspace = true }
 # Precompress every text asset (CSS + JS) at build time per the
 # `Accept-Encoding`-based negotiation served from both the default
 # `ServeDir` (via `tower-http`'s `.precompressed_br()` /
@@ -78,8 +78,8 @@ sha2 = "0.11"
 # ship forever, so the per-build CPU cost amortises across every cached
 # response. Woff2 files are NOT precompressed: their container is
 # already brotli'd, double-compression inflates.
-brotli = "8.0.3"
-flate2 = "1.1.5"
+brotli = { workspace = true }
+flate2 = { workspace = true }
 # zstd precompression sits at the top of the negotiation priority
 # (`zstd > br > gz > identity`). Chrome 123+ / Firefox 126+ advertise it
 # in `Accept-Encoding`; for clients that don't, the embedded handler
@@ -87,4 +87,4 @@ flate2 = "1.1.5"
 # and then gzip automatically. Quality 22 is `Zstd::Best` — slowest at
 # build but smallest on the wire, same once-and-ship-forever trade-off
 # as brotli q11 above.
-zstd = "0.13.3"
+zstd = { workspace = true }

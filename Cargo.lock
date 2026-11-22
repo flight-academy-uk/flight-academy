@@ -981,21 +981,13 @@ dependencies = [
 name = "flight-academy-auth"
 version = "0.1.0"
 dependencies = [
- "derive_more",
  "flight-academy-core",
  "uuid",
 ]
 
 [[package]]
-name = "flight-academy-aviation"
-version = "0.1.0"
-
-[[package]]
 name = "flight-academy-core"
 version = "0.1.0"
-dependencies = [
- "derive_more",
-]
 
 [[package]]
 name = "flight-academy-db"
@@ -1017,10 +1009,6 @@ dependencies = [
  "uuid",
  "zeroize",
 ]
-
-[[package]]
-name = "flight-academy-integrations"
-version = "0.1.0"
 
 [[package]]
 name = "flight-academy-store"
