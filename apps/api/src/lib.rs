@@ -22,12 +22,20 @@ pub use handlers::audit_events::AuditEventCount;
 pub use handlers::health::HealthResponse;
 pub use handlers::tenants::{TenantDeleteRequest, TenantPatchRequest, TenantResponse};
 
-use axum::http::{HeaderValue, header};
+use std::time::Duration;
+
+use axum::extract::DefaultBodyLimit;
+use axum::http::{HeaderValue, StatusCode, header};
+use flight_academy_auth::Subject;
 use tower::ServiceBuilder;
+use tower_http::LatencyUnit;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 #[cfg(not(feature = "embedded-static"))]
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
+use tower_http::timeout::TimeoutLayer;
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tracing::Level;
 use utoipa::OpenApi;
 use utoipa_axum::{router::OpenApiRouter, routes};
 
@@ -41,6 +49,27 @@ use utoipa_axum::{router::OpenApiRouter, routes};
 )]
 struct ApiDoc;
 
+/// Router settings, built once at startup by the `serve` command.
+#[derive(Clone, Debug)]
+pub struct AppConfig {
+    /// Whole-request deadline, including reading the body; exceeded -> 408.
+    pub request_timeout: Duration,
+    /// Largest request body an extractor will read; exceeded -> 413.
+    pub body_limit: usize,
+    /// Development-only subject injected on tenant routes; `None` -> 401.
+    pub dev_subject: Option<Subject>,
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            request_timeout: Duration::from_secs(30),
+            body_limit: 256 * 1024,
+            dev_subject: None,
+        }
+    }
+}
+
 /// The assembled router and its OpenAPI document. Returned as a named pair
 /// so callers can pick the half they need without touching tuple indices.
 struct Built {
@@ -48,7 +77,7 @@ struct Built {
     openapi: utoipa::openapi::OpenApi,
 }
 
-fn build(with_dev_auth: bool) -> Built {
+fn build(config: &AppConfig, with_dev_auth: bool) -> Built {
     // Tenant-scoped product-API routes. Production-mode wraps them in
     // dev_auth (the walking-skeleton subject extractor); test-mode omits
     // it so integration tests inject a `Subject` directly into request
@@ -62,7 +91,10 @@ fn build(with_dev_auth: bool) -> Built {
         ))
         .routes(routes!(handlers::audit_events::audit_event_count));
     if with_dev_auth {
-        tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn(middleware::dev_auth));
+        tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn_with_state(
+            config.dev_subject.clone(),
+            middleware::dev_auth,
+        ));
     }
 
     // MASH HTML surface (ADR-020). Plain axum routes — not in the OpenAPI
@@ -142,12 +174,36 @@ fn build(with_dev_auth: bool) -> Built {
         .routes(routes!(handlers::health::healthz))
         .merge(tenant_routes)
         .merge(html_routes)
-        .layer(PropagateRequestIdLayer::new(middleware::X_REQUEST_ID))
-        .layer(SetRequestIdLayer::new(
-            middleware::X_REQUEST_ID,
-            middleware::MakeRequestUuidV7,
-        ))
-        .layer(axum::middleware::from_fn(middleware::security_headers))
+        .layer(
+            // Outermost first. Security headers wrap everything, including
+            // 408 / 413 responses; the client's request ID is removed before
+            // a server ID is assigned; the span sees that ID.
+            ServiceBuilder::new()
+                .layer(axum::middleware::from_fn(middleware::security_headers))
+                .layer(axum::middleware::from_fn(
+                    middleware::strip_client_request_id,
+                ))
+                .layer(SetRequestIdLayer::new(
+                    middleware::X_REQUEST_ID,
+                    middleware::MakeRequestUuidV7,
+                ))
+                .layer(
+                    TraceLayer::new_for_http()
+                        .make_span_with(middleware::make_span)
+                        .on_response(
+                            DefaultOnResponse::new()
+                                .level(Level::INFO)
+                                .latency_unit(LatencyUnit::Millis),
+                        ),
+                )
+                .layer(PropagateRequestIdLayer::new(middleware::X_REQUEST_ID))
+                .layer(axum::middleware::from_fn(middleware::request_scope))
+                .layer(TimeoutLayer::with_status_code(
+                    StatusCode::REQUEST_TIMEOUT,
+                    config.request_timeout,
+                ))
+                .layer(DefaultBodyLimit::max(config.body_limit)),
+        )
         .split_for_parts();
     Built { router, openapi }
 }
@@ -155,8 +211,8 @@ fn build(with_dev_auth: bool) -> Built {
 /// Construct the axum router used by the `serve` subcommand. Caller
 /// attaches `Extension(Db)` after construction — the DB is a runtime
 /// concern (serve has one, emit-spec doesn't).
-pub fn app() -> axum::Router {
-    build(true).router
+pub fn app(config: &AppConfig) -> axum::Router {
+    build(config, true).router
 }
 
 /// Test-mode router. Identical to [`app`] except the `dev_auth` middleware
@@ -164,12 +220,17 @@ pub fn app() -> axum::Router {
 /// present in request extensions but the test attaches it directly per
 /// request rather than reading env vars.
 pub fn app_for_test() -> axum::Router {
-    build(false).router
+    build(&AppConfig::default(), false).router
+}
+
+/// [`app_for_test`] with explicit settings, for tests of the limits.
+pub fn app_for_test_with(config: &AppConfig) -> axum::Router {
+    build(config, false).router
 }
 
 /// Produce the assembled OpenAPI document used by the `emit-spec` subcommand
 /// (and any tooling that wants to compare the live contract against the
 /// committed `docs/api/openapi.json` — ADR-006 §A; format per ADR-018).
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    build(true).openapi
+    build(&AppConfig::default(), true).openapi
 }

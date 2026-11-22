@@ -28,7 +28,7 @@ embedded-static = ["dep:rust-embed"]
 
 [dependencies]
 axum = { workspace = true, features = ["macros"] }
-clap = { workspace = true, features = ["derive"] }
+clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
 flight-academy-auth = { workspace = true }
 flight-academy-core = { workspace = true }
@@ -46,9 +46,9 @@ rust-embed = { workspace = true, optional = true, features = ["debug-embed", "mi
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sqlx = { workspace = true, features = ["macros"] }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 tower = { workspace = true }
-tower-http = { workspace = true, features = ["fs", "request-id", "set-header", "trace", "compression-br", "compression-gzip", "compression-zstd"] }
+tower-http = { workspace = true, features = ["fs", "request-id", "set-header", "timeout", "trace"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 utoipa = { workspace = true, features = ["axum_extras", "uuid"] }
@@ -57,6 +57,7 @@ uuid = { workspace = true, features = ["serde", "v7"] }
 
 [dev-dependencies]
 flight-academy-test-support = { workspace = true }
+futures-util = { workspace = true }
 http-body-util = { workspace = true }
 tower = { workspace = true, features = ["util"] }
 

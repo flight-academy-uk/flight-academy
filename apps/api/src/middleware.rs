@@ -1,33 +1,22 @@
 //! HTTP middleware:
 //!
-//! * `x-request-id` propagation per ADR-004 §B.
-//! * `security_headers` — baseline response headers per ADR-004 §F, with
-//!   CSP shaped for the current JSON-only surface (ADR-015's hash- and
-//!   nonce-based machinery waits for the MASH HTML surface served by
-//!   `apps/api` per ADR-020).
-//! * `dev_auth` — walking-skeleton subject extractor; replaced by real
-//!   passwordless auth (ADR-001 §F, ADR-013) when that lands.
-//!
-//! Each request gets a UUID v7 (time-ordered, sortable) if no `x-request-id`
-//! header is supplied; the same id is echoed back on the response. Handlers
-//! reach the id via the `tower_http::request_id::RequestId` request extension
-//! (e.g. for populating the problem+json `request_id` field — see
-//! `error::ProblemDetails`).
-//!
-//! Time-ordering note: UUID v7 leaks coarse timestamp, which is fine for an
-//! ingress-generated correlation id. Clients supplying their own id may
-//! choose any string-shaped value; we do not validate the format because
-//! tower-http already constrains it to a valid `HeaderValue`.
-
-use std::collections::BTreeSet;
+//! * request IDs: every request gets a server-generated UUID v7. A client's
+//!   `x-request-id` is never used as the ID; a sanitised copy is kept as
+//!   `client_request_id` for log correlation only.
+//! * `request_scope`: makes the request ID available to error responses.
+//! * `make_span`: one tracing span per request carrying the request ID,
+//!   method and matched route template (never the raw path).
+//! * `security_headers`: baseline response headers per ADR-004 §F.
+//! * `dev_auth`: development-only subject injection, configured once at
+//!   startup; replaced by real passwordless authentication.
 
 use axum::{
-    extract::Request,
+    extract::{MatchedPath, Request, State},
     http::{HeaderValue, header::HeaderName},
     middleware::Next,
     response::Response,
 };
-use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
+use flight_academy_auth::Subject;
 use flight_academy_core::Error;
 use tower_http::request_id::{MakeRequestId, RequestId};
 use uuid::Uuid;
@@ -159,45 +148,92 @@ impl MakeRequestId for MakeRequestUuidV7 {
     }
 }
 
-/// Walking-skeleton identity middleware. Reads a `Subject` from the
-/// `FA_DEV_USER_ID` and `FA_DEV_TENANT_ID` environment variables and
-/// attaches it to request extensions. Gated by `FA_DEV_AUTH=1` so it
-/// never activates by accident; with the env unset, all routes
-/// downstream of this layer return 401.
-///
-/// Removed when the real passwordless / WebAuthn auth subsystem
-/// (ADR-001 §F, ADR-013) lands. Documented as **dev-only** in CONTRIBUTING
-/// once that subsystem provides the production path.
-pub async fn dev_auth(mut req: Request, next: Next) -> Result<Response, ApiError> {
-    if std::env::var("FA_DEV_AUTH").as_deref() != Ok("1") {
-        return Err(Error::Unauthorized.into());
+/// The `x-request-id` a client sent, if it was short and plain enough to log.
+/// Kept only for correlating with the client's own logs; never used as the
+/// request ID.
+#[derive(Clone, Debug)]
+pub struct ClientRequestId(pub String);
+
+const CLIENT_REQUEST_ID_MAX: usize = 64;
+
+/// Remove any client-supplied `x-request-id` before `SetRequestIdLayer` runs,
+/// so the server always generates the ID.
+pub async fn strip_client_request_id(mut req: Request, next: Next) -> Response {
+    if let Some(value) = req.headers_mut().remove(&X_REQUEST_ID) {
+        let sanitised = value
+            .to_str()
+            .ok()
+            .filter(|v| {
+                !v.is_empty()
+                    && v.len() <= CLIENT_REQUEST_ID_MAX
+                    && v.bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
+            })
+            .unwrap_or("invalid")
+            .to_owned();
+        req.extensions_mut().insert(ClientRequestId(sanitised));
     }
-    let user_id = std::env::var("FA_DEV_USER_ID")
-        .ok()
-        .and_then(|s| Uuid::parse_str(&s).ok())
-        .ok_or(ApiError::from(Error::Unauthorized))?;
-    let tenant_id = std::env::var("FA_DEV_TENANT_ID")
-        .ok()
-        .and_then(|s| Uuid::parse_str(&s).ok())
-        .ok_or(ApiError::from(Error::Unauthorized))?;
+    next.run(req).await
+}
 
-    // Roles are comma-separated in `FA_DEV_ROLES` (e.g. `tenant-admin`).
-    // Unknown role strings are silently dropped so a config ahead of the
-    // binary's known set degrades safely. Empty env var → no roles
-    // (subject is a plain member).
-    let roles: BTreeSet<Role> = std::env::var("FA_DEV_ROLES")
-        .unwrap_or_default()
-        .split(',')
-        .filter_map(|s| Role::from_str_known(s.trim()))
-        .collect();
+tokio::task_local! {
+    static REQUEST_ID: String;
+}
 
-    let subject = Subject {
-        user_id,
-        actor_class: ActorClass::Member,
-        tenant_id: Some(tenant_id),
-        roles,
-        attributes: SubjectAttributes,
-        elevation: None,
+/// The current request's ID, when called inside `request_scope`.
+pub fn current_request_id() -> Option<String> {
+    REQUEST_ID.try_with(Clone::clone).ok()
+}
+
+fn request_id_of<B>(req: &axum::http::Request<B>) -> &str {
+    req.extensions()
+        .get::<RequestId>()
+        .and_then(|id| id.header_value().to_str().ok())
+        .unwrap_or("")
+}
+
+/// Run the rest of the stack with the request ID in task-local scope, so
+/// `ApiError` can put it in `ProblemDetails.request_id`, then make sure any
+/// other error response is problem+json too.
+pub async fn request_scope(req: Request, next: Next) -> Response {
+    let id = request_id_of(&req).to_owned();
+    let response = REQUEST_ID.scope(id.clone(), next.run(req)).await;
+    crate::error::ensure_problem_json(response, &id)
+}
+
+/// Span for `TraceLayer`: request ID, method and route template. The raw
+/// URI is not recorded, because paths can carry identifiers.
+pub fn make_span<B>(req: &axum::http::Request<B>) -> tracing::Span {
+    let route = req
+        .extensions()
+        .get::<MatchedPath>()
+        .map(MatchedPath::as_str)
+        .unwrap_or("unmatched");
+    let client_request_id = req
+        .extensions()
+        .get::<ClientRequestId>()
+        .map(|c| c.0.as_str())
+        .unwrap_or("");
+    tracing::info_span!(
+        "request",
+        request_id = request_id_of(req),
+        method = %req.method(),
+        route,
+        client_request_id,
+    )
+}
+
+/// Development-only identity middleware. The subject is built once at startup
+/// from `FA_DEV_*` settings (see the `serve` command); when development
+/// authentication is off, every route behind this layer returns 401.
+/// Removed when real passwordless authentication lands.
+pub async fn dev_auth(
+    State(subject): State<Option<Subject>>,
+    mut req: Request,
+    next: Next,
+) -> Result<Response, ApiError> {
+    let Some(subject) = subject else {
+        return Err(Error::Unauthorized.into());
     };
     req.extensions_mut().insert(subject);
     Ok(next.run(req).await)
