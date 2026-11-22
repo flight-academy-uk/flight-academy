@@ -33,6 +33,15 @@ ignore = [
     # `paste` is a compile-time token-pasting macro; no runtime exposure.
     # Re-evaluate when utoipa-axum migrates off it.
     "RUSTSEC-2024-0436",
+    # RUSTSEC-2026-0440 — `astral-tokio-tar` is unmaintained (Astral ended
+    # maintenance 2026-11-03). Pulled transitively via `testcontainers`
+    # 0.27 (through `testcontainers-modules` 0.15); the latest release,
+    # 0.28, still depends on it, so upgrading does not remove it. Reached
+    # only through `flight-academy-test-support`, a test-only workspace
+    # member consumed solely as a dev-dependency and never linked into the
+    # release binary. Re-evaluate when testcontainers moves to a
+    # maintained tar crate.
+    "RUSTSEC-2026-0440",
 ]
 
 # -----------------------------------------------------------------------------
