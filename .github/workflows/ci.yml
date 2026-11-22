@@ -14,7 +14,8 @@
 # MASH web tooling (Tailwind compile + asset hashing per ADR-020 §O) and
 # Mobile (apps/mobile) jobs land alongside those subsystems. Cross-cutting
 # checks (cargo deny / cargo audit / actionlint / codespell) run via
-# `scripts/check-all.sh` locally today; CI integration lands when justified.
+# `scripts/check-all.sh` locally; of these, only the action-pin check
+# (`scripts/check-action-pins.sh`) also runs in CI, in the Lint job.
 
 name: CI
 
@@ -81,7 +82,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Rust build cache
-        # Caches ~/.cargo/{registry,git} + target/ keyed on Cargo.lock +
+        # Caches ~/.cargo/{registry,git} + target/ keyed on Cargo.lock + gitleaks:allow
         # workspace fingerprint. PR caches scope to the PR's branch; they
         # cannot poison main's cache (GitHub's documented cache scoping).
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
