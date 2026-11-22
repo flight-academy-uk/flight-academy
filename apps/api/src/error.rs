@@ -129,7 +129,7 @@ impl IntoResponse for ApiError {
             status: status.as_u16(),
             detail,
             instance: None,
-            request_id: None,
+            request_id: crate::middleware::current_request_id(),
         };
         let mut response = (status, Json(body)).into_response();
         response.headers_mut().insert(

@@ -2,9 +2,8 @@
 //! (`crate::error` in lib.rs's module tree) — that one renders into
 //! `application/problem+json`; this one bubbles up to a CLI exit code.
 //!
-//! Jeremy Chone / Rust10x pattern: `derive_more::From` for `?` interop,
-//! manual Display rendered as Debug (the binary just prints these on
-//! shutdown — no per-variant string adds value).
+//! `From` for variants that wrap a source error, so `?` works; Display is
+//! rendered from Debug because the binary only prints these on exit.
 
 use derive_more::From;
 
@@ -18,10 +17,10 @@ pub enum Error {
     Io(std::io::Error),
     Db(flight_academy_db::Error),
     Json(serde_json::Error),
+    /// A setting combination that cannot start the server.
     #[from(skip)]
-    EnvVar {
-        name: &'static str,
-        source: std::env::VarError,
+    Config {
+        reason: &'static str,
     },
 }
 
@@ -32,9 +31,3 @@ impl core::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
-
-/// Read a required environment variable. Failure carries both the variable
-/// name (which `std::env::VarError` does not) and the underlying error.
-pub fn env_var(name: &'static str) -> Result<String> {
-    std::env::var(name).map_err(|source| Error::EnvVar { name, source })
-}

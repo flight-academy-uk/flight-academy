@@ -17,6 +17,10 @@ pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;
 
+use std::str::FromStr;
+use std::time::Duration;
+
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
@@ -36,9 +40,32 @@ pub struct Db {
     pool: PgPool,
 }
 
+/// Connection-pool limits, set explicitly instead of relying on sqlx's
+/// defaults. `statement_timeout` is applied to every connection as a
+/// PostgreSQL session setting; `None` leaves the server default (no limit).
+#[derive(Clone, Debug)]
+pub struct PoolSettings {
+    pub max_connections: u32,
+    pub acquire_timeout: Duration,
+    pub idle_timeout: Duration,
+    pub max_lifetime: Duration,
+    pub statement_timeout: Option<Duration>,
+}
+
 impl Db {
-    pub async fn connect(database_url: &str) -> Result<Self> {
-        let pool = PgPool::connect(database_url).await?;
+    pub async fn connect(database_url: &str, settings: &PoolSettings) -> Result<Self> {
+        let mut connect = PgConnectOptions::from_str(database_url)?;
+        if let Some(timeout) = settings.statement_timeout {
+            connect =
+                connect.options([("statement_timeout", format!("{}ms", timeout.as_millis()))]);
+        }
+        let pool = PgPoolOptions::new()
+            .max_connections(settings.max_connections)
+            .acquire_timeout(settings.acquire_timeout)
+            .idle_timeout(settings.idle_timeout)
+            .max_lifetime(settings.max_lifetime)
+            .connect_with(connect)
+            .await?;
         Ok(Self { pool })
     }
 
