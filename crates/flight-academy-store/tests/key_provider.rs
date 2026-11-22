@@ -366,27 +366,33 @@ async fn master_file_rejects_missing_path() {
 /// Minimal scratch-dir helper — tests need a writable temp dir but the
 /// crate has no `tempfile` dep at v0.1. Uses `CARGO_TARGET_TMPDIR` if
 /// present (Cargo provides it during `cargo test`); falls back to
-/// `std::env::temp_dir()` otherwise. Each invocation uses a per-pid
-/// suffix so concurrent test binaries do not collide.
+/// `std::env::temp_dir()` otherwise. Each invocation gets its own
+/// directory, keyed by process id plus a per-process counter: tests in
+/// one binary run on parallel threads, so a pid-only name would let one
+/// test's `Drop` delete the directory while another is still writing.
 fn tempdir_for_test() -> ScratchDir {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let seq = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let base = std::env::var_os("CARGO_TARGET_TMPDIR")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);
-    let dir = base.join(format!("fa-store-test-{}", std::process::id()));
-    let _ = std::fs::create_dir_all(&dir);
-    ScratchDir(dir)
+    let dir = base.join(format!("fa-store-test-{}-{seq}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    ScratchDir { dir }
 }
 
-struct ScratchDir(std::path::PathBuf);
+struct ScratchDir {
+    dir: std::path::PathBuf,
+}
 
 impl ScratchDir {
     fn path(&self) -> &std::path::Path {
-        &self.0
+        &self.dir
     }
 }
 
 impl Drop for ScratchDir {
     fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
