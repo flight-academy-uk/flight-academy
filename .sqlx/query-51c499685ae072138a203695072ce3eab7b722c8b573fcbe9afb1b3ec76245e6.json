@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tenant_dek_wrappings\n                SET state = 'retired', retired_at = now()\n              WHERE tenant_id = $1 AND record_kind = $2 AND state = 'active'\n          RETURNING dek_version",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "dek_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_dek_wrappings",
+            "name": "dek_version"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "51c499685ae072138a203695072ce3eab7b722c8b573fcbe9afb1b3ec76245e6"
+}

@@ -5,6 +5,7 @@
 //! (because the `prev_hash` SELECT returns nothing under RLS) without
 //! surfacing any error to the caller. See the pool-role invariant on
 //! `audit::write_tenant_audit_event_in_tx`.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_db::{Error, audit};
 use flight_academy_test_support::fresh_db;

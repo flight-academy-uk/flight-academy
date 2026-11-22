@@ -1,0 +1,19 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO tenant_dek_wrappings\n                (tenant_id, record_kind, dek_version, wrapped_bytes,\n                 wrap_algo_id, kek_id, state)\n             VALUES ($1, $2, $3, $4, $5, $6, 'active')",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4",
+        "Bytea",
+        "Int2",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c3d4f39213fc1b58f8e6a0f8b8e6372d0a4fe988b1837608c7c3d95f756bad7d"
+}

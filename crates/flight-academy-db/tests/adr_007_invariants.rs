@@ -18,6 +18,7 @@
 //! that catches a missing `deleted_at`, a missing trigger, or a missing
 //! watermark index — before the schema reaches production where ADR-003
 //! §B's forward-only discipline makes retrofit expensive.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_test_support::fresh_db;
 use sqlx::Row;

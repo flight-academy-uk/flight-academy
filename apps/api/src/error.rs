@@ -54,7 +54,7 @@ pub struct ProblemDetails {
 /// `IntoResponse`. Handlers return `Result<T, ApiError>`; `?` on a
 /// `flight_academy_core::Result` converts automatically via `From<Error>`.
 ///
-/// Lower-layer errors (`flight_academy_db::Error`, raw `sqlx::Error`) are
+/// Lower-layer errors (`flight_academy_db::Error`) are
 /// flattened to `Error::Internal` so the client never sees driver-level
 /// detail; the underlying error is logged at error level for the
 /// operator's eyes only. Real per-domain mapping (NotFound for missing
@@ -73,15 +73,6 @@ impl From<Error> for ApiError {
 impl From<flight_academy_db::Error> for ApiError {
     fn from(err: flight_academy_db::Error) -> Self {
         tracing::error!(?err, "db error");
-        Self {
-            err: Error::Internal,
-        }
-    }
-}
-
-impl From<sqlx::Error> for ApiError {
-    fn from(err: sqlx::Error) -> Self {
-        tracing::error!(?err, "sqlx error");
         Self {
             err: Error::Internal,
         }

@@ -77,14 +77,14 @@ impl KeyProvider for SqlxKeyProvider {
         // we check explicitly inside the transaction so the error
         // surface is the trait-level `AlreadyActiveDek` rather than a
         // raw 23505 unique-violation.
-        let active_exists: bool = sqlx::query_scalar(
-            "SELECT EXISTS (
+        let active_exists: bool = sqlx::query_scalar!(
+            r#"SELECT EXISTS (
                 SELECT 1 FROM tenant_dek_wrappings
                  WHERE tenant_id = $1 AND record_kind = $2 AND state = 'active'
-             )",
+             ) AS "exists!""#,
+            tenant_id,
+            record_kind
         )
-        .bind(tenant_id)
-        .bind(record_kind)
         .fetch_one(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -94,13 +94,13 @@ impl KeyProvider for SqlxKeyProvider {
 
         // Compute the next version number for this (tenant, record_kind).
         // COALESCE handles the first-version-ever case.
-        let max_version: Option<i32> = sqlx::query_scalar(
+        let max_version: Option<i32> = sqlx::query_scalar!(
             "SELECT MAX(dek_version)
                FROM tenant_dek_wrappings
               WHERE tenant_id = $1 AND record_kind = $2",
+            tenant_id,
+            record_kind
         )
-        .bind(tenant_id)
-        .bind(record_kind)
         .fetch_one(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -110,18 +110,18 @@ impl KeyProvider for SqlxKeyProvider {
             .master
             .wrap(controller, record_kind, version, &dek_bytes)?;
 
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO tenant_dek_wrappings
                 (tenant_id, record_kind, dek_version, wrapped_bytes,
                  wrap_algo_id, kek_id, state)
              VALUES ($1, $2, $3, $4, $5, $6, 'active')",
+            tenant_id,
+            record_kind,
+            version as i32,
+            wrapped.as_bytes(),
+            WRAP_ALGO_ID_GCM_SIV,
+            MASTER_KEK_ID
         )
-        .bind(tenant_id)
-        .bind(record_kind)
-        .bind(version as i32)
-        .bind(wrapped.as_bytes())
-        .bind(WRAP_ALGO_ID_GCM_SIV)
-        .bind(MASTER_KEK_ID)
         .execute(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -137,18 +137,20 @@ impl KeyProvider for SqlxKeyProvider {
     ) -> StoreResult<(Dek, u32)> {
         let tenant_id = Self::tenant_id(controller)?;
 
-        let row: Option<(i32, Vec<u8>)> = sqlx::query_as(
+        let row = sqlx::query!(
             "SELECT dek_version, wrapped_bytes
                FROM tenant_dek_wrappings
               WHERE tenant_id = $1 AND record_kind = $2 AND state = 'active'",
+            tenant_id,
+            record_kind
         )
-        .bind(tenant_id)
-        .bind(record_kind)
         .fetch_optional(&self.pool)
         .await
         .map_err(sqlx_to_store)?;
 
-        let (version_i32, wrapped_bytes) = row.ok_or(StoreError::NoActiveDek)?;
+        let (version_i32, wrapped_bytes) = row
+            .map(|r| (r.dek_version, r.wrapped_bytes))
+            .ok_or(StoreError::NoActiveDek)?;
         let version = version_i32 as u32;
         let wrapped = WrappedDek::from_bytes(wrapped_bytes);
         let dek = self
@@ -165,14 +167,14 @@ impl KeyProvider for SqlxKeyProvider {
     ) -> StoreResult<Dek> {
         let tenant_id = Self::tenant_id(controller)?;
 
-        let row: Option<Vec<u8>> = sqlx::query_scalar(
+        let row: Option<Vec<u8>> = sqlx::query_scalar!(
             "SELECT wrapped_bytes
                FROM tenant_dek_wrappings
               WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3",
+            tenant_id,
+            record_kind,
+            dek_version as i32
         )
-        .bind(tenant_id)
-        .bind(record_kind)
-        .bind(dek_version as i32)
         .fetch_optional(&self.pool)
         .await
         .map_err(sqlx_to_store)?;
@@ -202,14 +204,14 @@ impl KeyProvider for SqlxKeyProvider {
         // transiently violate the index.
         let mut tx = self.pool.begin().await.map_err(sqlx_to_store)?;
 
-        let retired_version: Option<i32> = sqlx::query_scalar(
+        let retired_version: Option<i32> = sqlx::query_scalar!(
             "UPDATE tenant_dek_wrappings
                 SET state = 'retired', retired_at = now()
               WHERE tenant_id = $1 AND record_kind = $2 AND state = 'active'
           RETURNING dek_version",
+            tenant_id,
+            record_kind
         )
-        .bind(tenant_id)
-        .bind(record_kind)
         .fetch_optional(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -231,18 +233,18 @@ impl KeyProvider for SqlxKeyProvider {
             .master
             .wrap(controller, record_kind, new_version, &dek_bytes)?;
 
-        sqlx::query(
+        sqlx::query!(
             "INSERT INTO tenant_dek_wrappings
                 (tenant_id, record_kind, dek_version, wrapped_bytes,
                  wrap_algo_id, kek_id, state)
              VALUES ($1, $2, $3, $4, $5, $6, 'active')",
+            tenant_id,
+            record_kind,
+            new_version as i32,
+            wrapped.as_bytes(),
+            WRAP_ALGO_ID_GCM_SIV,
+            MASTER_KEK_ID
         )
-        .bind(tenant_id)
-        .bind(record_kind)
-        .bind(new_version as i32)
-        .bind(wrapped.as_bytes())
-        .bind(WRAP_ALGO_ID_GCM_SIV)
-        .bind(MASTER_KEK_ID)
         .execute(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -268,15 +270,15 @@ impl KeyProvider for SqlxKeyProvider {
         // `rotate_dek`.
         let mut tx = self.pool.begin().await.map_err(sqlx_to_store)?;
 
-        let row_state: Option<String> = sqlx::query_scalar(
+        let row_state: Option<String> = sqlx::query_scalar!(
             "SELECT state
                FROM tenant_dek_wrappings
               WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3
                 FOR UPDATE",
+            tenant_id,
+            record_kind,
+            dek_version as i32
         )
-        .bind(tenant_id)
-        .bind(record_kind)
-        .bind(dek_version as i32)
         .fetch_optional(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;
@@ -288,13 +290,13 @@ impl KeyProvider for SqlxKeyProvider {
             return Err(StoreError::CannotShredActiveDek);
         }
 
-        sqlx::query(
+        sqlx::query!(
             "DELETE FROM tenant_dek_wrappings
               WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3",
+            tenant_id,
+            record_kind,
+            dek_version as i32
         )
-        .bind(tenant_id)
-        .bind(record_kind)
-        .bind(dek_version as i32)
         .execute(&mut *tx)
         .await
         .map_err(sqlx_to_store)?;

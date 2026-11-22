@@ -17,12 +17,28 @@ pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;
 
+use std::future::Future;
+use std::pin::Pin;
 use std::str::FromStr;
 use std::time::Duration;
 
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
+
+/// Attempts for a SERIALIZABLE unit before a serialization failure is
+/// returned to the caller.
+const MAX_SERIALIZABLE_ATTEMPTS: u32 = 3;
+const SQLSTATE_SERIALIZATION_FAILURE: &str = "40001";
+
+pub(crate) type Tx = Transaction<'static, Postgres>;
+
+/// What a transactional unit returns to [`Db::serializable`]: the
+/// transaction it was given, handed back for commit, and its result. Taking
+/// the transaction by value (rather than borrowing a connection) lets the
+/// unit borrow the caller's arguments; boxing it as `Send` lets it run
+/// inside axum handlers.
+pub(crate) type TxUnit<'a, T> = Pin<Box<dyn Future<Output = (Tx, Result<T>)> + Send + 'a>>;
 
 /// Embedded migrator. Returned as a value so `flight-academy-test-support`
 /// can drive migrations against a fresh per-test database without needing
@@ -76,8 +92,50 @@ impl Db {
         Self { pool }
     }
 
+    /// The underlying pool, for tests that seed data or inspect the
+    /// catalogue directly. Not part of the production API: every query the
+    /// application runs is a method on `Db`.
+    #[cfg(feature = "test-util")]
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Run `op` in a SERIALIZABLE transaction, retrying the whole unit when
+    /// PostgreSQL reports a serialization failure (SQLSTATE 40001), which can
+    /// surface at any statement or at commit. Other errors propagate.
+    pub(crate) async fn serializable<'a, T>(
+        &self,
+        what: &'static str,
+        tenant_id: Uuid,
+        mut unit: impl FnMut(Tx) -> TxUnit<'a, T>,
+    ) -> Result<T> {
+        for attempt in 1..=MAX_SERIALIZABLE_ATTEMPTS {
+            let tx = self
+                .pool
+                .begin_with("BEGIN ISOLATION LEVEL SERIALIZABLE")
+                .await?;
+            let (tx, result) = unit(tx).await;
+            let outcome = match result {
+                Ok(value) => tx.commit().await.map(|()| value).map_err(Error::from),
+                Err(err) => Err(err),
+            };
+            match outcome {
+                Err(Error::Sqlx(sqlx::Error::Database(db_err)))
+                    if db_err.code().as_deref() == Some(SQLSTATE_SERIALIZATION_FAILURE)
+                        && attempt < MAX_SERIALIZABLE_ATTEMPTS =>
+                {
+                    tracing::warn!(
+                        %tenant_id,
+                        attempt,
+                        max_attempts = MAX_SERIALIZABLE_ATTEMPTS,
+                        what,
+                        "serialization failure; retrying"
+                    );
+                }
+                other => return other,
+            }
+        }
+        unreachable!("the last attempt always returns");
     }
 
     /// Apply all pending migrations from the embedded set
@@ -102,23 +160,20 @@ impl Db {
 
     /// Begin a transaction with the active tenant context set.
     ///
-    /// Both `SET LOCAL ROLE app_api` and
-    /// `SET LOCAL app.current_tenant = '<uuid>'` are issued inside the
-    /// transaction so they reset at commit / rollback — safe with the
-    /// pooled connection. The role drop is what makes RLS actually apply
-    /// (the pool's session role is normally a superuser, which RLS would
-    /// otherwise bypass); the GUC is what
-    /// `audit_events_tenant_isolation` reads in its USING clause
-    /// (migration `20260605120000_audit_events_rls.sql`).
+    /// The role (`app_api`) and `app.current_tenant` are both set with
+    /// transaction-local `set_config`, in one statement, so they reset at
+    /// commit or rollback and cannot leak to the next user of the pooled
+    /// connection. The role is what makes RLS apply; the setting is what the
+    /// `audit_events_tenant_isolation` policy reads.
     pub async fn begin_tenant(&self, tenant_id: Uuid) -> Result<TenantTx> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("SET LOCAL ROLE app_api")
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
-            .bind(tenant_id.to_string())
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "SELECT set_config('role', 'app_api', true) AS role,
+                    set_config('app.current_tenant', $1, true) AS tenant",
+            tenant_id.to_string()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
         Ok(TenantTx { tx })
     }
 }

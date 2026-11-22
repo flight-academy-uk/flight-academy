@@ -1,0 +1,41 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT dek_version, wrapped_bytes\n               FROM tenant_dek_wrappings\n              WHERE tenant_id = $1 AND record_kind = $2 AND state = 'active'",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "dek_version",
+        "type_info": "Int4",
+        "origin": {
+          "Table": {
+            "table": "tenant_dek_wrappings",
+            "name": "dek_version"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "wrapped_bytes",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "tenant_dek_wrappings",
+            "name": "wrapped_bytes"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "e1a7175207cc74f58ba73221e84de21cb87cd7e6de5bfe3e51c80faacd255db7"
+}

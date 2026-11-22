@@ -7,6 +7,7 @@
 //! Paths use slugs per ADR-006 §C; the handler resolves slug → tenant_id
 //! before policy evaluation. Unknown slug → 404 (not 403): slugs are
 //! intended public identifiers.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use axum::{
     Extension,

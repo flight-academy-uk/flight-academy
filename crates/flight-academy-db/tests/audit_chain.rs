@@ -1,5 +1,6 @@
 //! Verifies the audit chain writer produces correctly-linked rows and
 //! that a tampered row is detected by re-deriving its hash.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;

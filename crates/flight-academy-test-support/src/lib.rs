@@ -12,6 +12,7 @@
 //!   which would interact poorly with the `SET LOCAL ROLE app_api` inside
 //!   `Db::begin_tenant` (the outer rollback would undo the role drop the
 //!   tx depends on).
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use std::collections::BTreeSet;
 

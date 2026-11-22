@@ -191,3 +191,14 @@ jobs:
             | grep -Ev '^-- Dumped (from database|by pg_dump) version' \
             > /tmp/schema.actual.sql
           diff -u crates/flight-academy-db/schema.sql /tmp/schema.actual.sql
+
+      - name: Compile-time query cache is current (ADR-003 §E)
+        # Builds use the committed .sqlx/ cache (SQLX_OFFLINE in
+        # .cargo/config.toml). This regenerates the cache against the
+        # freshly migrated database and fails if any query is missing,
+        # stale, or no longer matches the schema.
+        env:
+          DATABASE_URL: postgres://postgres@localhost:5432/flight_academy_dev
+        run: |
+          cargo install sqlx-cli --version 0.9.0 --locked --no-default-features --features postgres,rustls
+          cargo sqlx prepare --workspace --check
