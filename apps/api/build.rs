@@ -400,11 +400,29 @@ fn hash_rename_and_compress(static_dir: &Path, file_rel: &str, precompress: bool
 /// trade-off as brotli q11 — slowest at compile, smallest on the wire.
 /// zstd sits at the top of the `Accept-Encoding` negotiation priority
 /// (Chrome 123+ / Firefox 126+ advertise it).
+///
+/// One-shot compression records the content size in the frame header, so
+/// the frame's window is the file's size. Streaming compression at level
+/// 22 declares a 128 MiB window instead, and RFC 9659 (Window Sizing for
+/// Zstandard Content Encoding) says "encoders MUST NOT generate frames
+/// requiring a Window_Size larger than 8 MB": browsers refuse such a
+/// frame, and a refused stylesheet leaves the page unstyled. The build
+/// stops if a frame would exceed the limit.
 fn write_zstd(path: &Path, bytes: &[u8]) {
-    let compressed = zstd::encode_all(bytes, 22).unwrap_or_else(|e| {
+    let compressed = zstd::bulk::compress(bytes, 22).unwrap_or_else(|e| {
         eprintln!("build.rs: zstd encode {} failed: {e}", path.display());
         exit(1);
     });
+    match zstd_window_size(&compressed) {
+        Some(window) if window <= ZSTD_HTTP_MAX_WINDOW => {}
+        other => {
+            eprintln!(
+                "build.rs: zstd frame for {} needs a {other:?} byte window; HTTP allows at most {ZSTD_HTTP_MAX_WINDOW} (RFC 9659)",
+                path.display()
+            );
+            exit(1);
+        }
+    }
     std::fs::write(path, &compressed).unwrap_or_else(|e| {
         eprintln!("build.rs: write {} failed: {e}", path.display());
         exit(1);
@@ -603,4 +621,37 @@ fn inject_hash(file_rel: &str, hash: &str) -> String {
         Some(p) => format!("{}/{hashed_name}", p.display()),
         None => hashed_name,
     }
+}
+
+/// The largest zstd window an HTTP client must accept (RFC 9659 §3).
+const ZSTD_HTTP_MAX_WINDOW: u64 = 8 * 1024 * 1024;
+
+/// The window a zstd frame needs to decode, read from its header (RFC 8878
+/// §3.1.1.1). `None` when the bytes are not a zstd frame.
+fn zstd_window_size(frame: &[u8]) -> Option<u64> {
+    if frame.get(..4)? != [0x28, 0xB5, 0x2F, 0xFD] {
+        return None;
+    }
+    let descriptor = *frame.get(4)?;
+    let single_segment = descriptor & 0b0010_0000 != 0;
+    if !single_segment {
+        // Window_Descriptor: exponent in the top five bits, mantissa below.
+        let wd = *frame.get(5)?;
+        let base = 1u64 << (10 + u64::from(wd >> 3));
+        return Some(base + (base / 8) * u64::from(wd & 0b111));
+    }
+    // A single-segment frame decodes within its content size, which follows
+    // the descriptor (and the dictionary ID, if any).
+    let dict_id_len = [0usize, 1, 2, 4][usize::from(descriptor & 0b11)];
+    let size_len = [1usize, 2, 4, 8][usize::from(descriptor >> 6)];
+    let start = 5 + dict_id_len;
+    let field = frame.get(start..start + size_len)?;
+    let mut size = 0u64;
+    for (i, byte) in field.iter().enumerate() {
+        size |= u64::from(*byte) << (8 * i);
+    }
+    if size_len == 2 {
+        size += 256;
+    }
+    Some(size)
 }
