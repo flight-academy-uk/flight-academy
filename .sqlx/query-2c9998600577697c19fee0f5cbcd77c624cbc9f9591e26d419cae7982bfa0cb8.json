@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id AS \"id: TenantId\", slug, name, tenant_type, settings\n               FROM tenants\n              WHERE slug = $1\n                AND deleted_at IS NULL",
+  "query": "SELECT id AS \"id: TenantId\", slug, name, tenant_type, settings\n                 FROM tenants\n                WHERE slug = $1\n                  AND id = $2\n                  AND deleted_at IS NULL",
   "describe": {
     "columns": [
       {
@@ -61,7 +61,8 @@
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Uuid"
       ]
     },
     "nullable": [
@@ -72,5 +73,5 @@
       false
     ]
   },
-  "hash": "c7752c8fd6fc3d5bc523f392ef218507e92889c79cecdab9b28bc5da145fb519"
+  "hash": "2c9998600577697c19fee0f5cbcd77c624cbc9f9591e26d419cae7982bfa0cb8"
 }

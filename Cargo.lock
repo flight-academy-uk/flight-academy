@@ -915,6 +915,7 @@ name = "flight-academy-auth"
 version = "0.1.0"
 dependencies = [
  "flight-academy-core",
+ "tracing",
 ]
 
 [[package]]

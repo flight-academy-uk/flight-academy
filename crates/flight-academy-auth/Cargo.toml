@@ -9,3 +9,4 @@ publish.workspace = true
 [dependencies]
 flight-academy-core = { workspace = true }
 
+tracing = { workspace = true }

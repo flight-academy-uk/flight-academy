@@ -23,7 +23,7 @@ use std::time::Duration;
 
 use clap::builder::BoolishValueParser;
 use clap::{Args, Parser, Subcommand};
-use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
+use flight_academy_auth::{ActorClass, Role, Subject};
 use flight_academy_core::{TenantId, UserId};
 use flight_academy_db::PoolSettings;
 use tracing_subscriber::EnvFilter;
@@ -128,15 +128,13 @@ impl DevAuthArgs {
         let roles: BTreeSet<Role> = self
             .roles
             .split(',')
-            .filter_map(|s| Role::from_str_known(s.trim()))
+            .filter_map(|s| s.trim().parse::<Role>().ok())
             .collect();
         Ok(Some(Subject {
             user_id,
             actor_class: ActorClass::Member,
             tenant_id: Some(tenant_id),
             roles,
-            attributes: SubjectAttributes,
-            elevation: None,
         }))
     }
 }

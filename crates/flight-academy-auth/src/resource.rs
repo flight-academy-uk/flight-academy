@@ -1,23 +1,19 @@
 //! Resource — the target of a policy evaluation. Shape per ADR-001 §C.
 
-use flight_academy_core::{TenantId, UserId};
+use flight_academy_core::TenantId;
 
-/// Stub variant set — grows as domain resources land.
+/// Grows as domain resources land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResourceKind {
     AuditEvent,
     Tenant,
 }
 
-/// Stub. Per-resource attributes (state, ownership lineage, sensitivity
-/// class per ADR-008 §B) land with the resources that need them.
-#[derive(Clone, Debug, Default)]
-pub struct ResourceAttributes;
-
+/// A resource the caller can already see. Policies decide what the caller
+/// may do with it; whether it is visible at all is settled earlier, by the
+/// query that found it (ADR-033).
 #[derive(Clone, Debug)]
 pub struct Resource {
     pub tenant_id: TenantId,
     pub kind: ResourceKind,
-    pub owner: Option<UserId>,
-    pub attributes: ResourceAttributes,
 }

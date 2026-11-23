@@ -9,11 +9,11 @@ mod policy;
 mod resource;
 mod subject;
 
-pub use policy::{Decision, Policy, TenantAdministration, TenantOwnership};
-pub use resource::{Resource, ResourceAttributes, ResourceKind};
-pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
+pub use policy::{Decision, Policy, TenantAdministration, TenantOwnership, authorise};
+pub use resource::{Resource, ResourceKind};
+pub use subject::{ActorClass, Role, Subject, UnknownRole};
 
-/// Stub set. Grows as endpoints land.
+/// Grows as endpoints land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     ListAuditEvents,

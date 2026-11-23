@@ -14,6 +14,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
+use flight_academy_auth::ActorClass;
 use flight_academy_core::TenantId;
 use flight_academy_test_support::{
     fresh_db, member_subject, seed_tenant, seed_tenant_audit_events, tenant_admin_subject,
@@ -46,7 +47,7 @@ async fn audit_count_tenant_match_serves_count() {
 }
 
 #[tokio::test]
-async fn audit_count_tenant_mismatch_is_forbidden() {
+async fn audit_count_other_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
@@ -55,9 +56,8 @@ async fn audit_count_tenant_mismatch_is_forbidden() {
 
     let app = flight_academy_api::app_for_test().layer(Extension(db));
 
-    // Subject is alpha; path is bravo. TenantOwnership denies before any
-    // tenant-scoped DB call (the slug resolves successfully — the policy
-    // check is what fails).
+    // Subject is alpha; path is bravo. Bravo exists, but it is not visible
+    // to alpha, so the slug does not resolve (ADR-033).
     let mut req = Request::builder()
         .uri("/api/v1/tenants/bravo-flight/audit-events/count")
         .body(Body::empty())
@@ -65,7 +65,7 @@ async fn audit_count_tenant_mismatch_is_forbidden() {
     req.extensions_mut().insert(member_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -114,7 +114,7 @@ async fn tenant_get_owner_sees_profile() {
 }
 
 #[tokio::test]
-async fn tenant_get_non_member_is_forbidden() {
+async fn tenant_get_other_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
@@ -124,11 +124,67 @@ async fn tenant_get_non_member_is_forbidden() {
         .uri("/api/v1/tenants/bravo-flight")
         .body(Body::empty())
         .unwrap();
-    // Subject belongs to alpha; asking for bravo.
+    // Subject belongs to alpha; asking for bravo, which exists.
     req.extensions_mut().insert(member_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+/// The response for another tenant's slug must not differ from the one for
+/// a slug nobody has, apart from the per-request ID, or it would tell a
+/// caller which slugs exist (ADR-033).
+#[tokio::test]
+async fn other_tenant_and_unknown_slug_get_identical_responses() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    let mut responses = Vec::new();
+    for slug in ["bravo-flight", "no-such-tenant"] {
+        let mut req = Request::builder()
+            .uri(format!("/api/v1/tenants/{slug}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(member_subject(alpha.id));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let mut headers = resp.headers().clone();
+        headers.remove("x-request-id");
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let mut body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        body.as_object_mut().unwrap().remove("request_id");
+        responses.push((status, headers, body));
+    }
+    assert_eq!(responses[0].0, StatusCode::NOT_FOUND);
+    assert_eq!(responses[0], responses[1]);
+}
+
+/// Staff do not use the product API (ADR-010 §B). Without a tenant context
+/// nothing is visible to them; with one, the tenant is visible and the
+/// policy refuses the action.
+#[tokio::test]
+async fn staff_cannot_use_the_product_api() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    for (tenant_id, expected) in [
+        (None, StatusCode::NOT_FOUND),
+        (Some(alpha.id), StatusCode::FORBIDDEN),
+    ] {
+        let mut staff = member_subject(alpha.id);
+        staff.actor_class = ActorClass::Staff;
+        staff.tenant_id = tenant_id;
+        let mut req = Request::builder()
+            .uri("/api/v1/tenants/alpha-academy")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(staff);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), expected, "staff with tenant {tenant_id:?}");
+    }
 }
 
 #[tokio::test]
@@ -234,13 +290,14 @@ async fn tenant_patch_non_admin_is_forbidden() {
 }
 
 #[tokio::test]
-async fn tenant_patch_cross_tenant_is_forbidden() {
+async fn tenant_patch_cross_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
     let app = flight_academy_api::app_for_test().layer(Extension(db));
 
-    // Subject is tenant-admin of alpha but patching bravo.
+    // Subject is tenant-admin of alpha but patching bravo, which it cannot
+    // see: the role does not reach another tenant.
     let mut req = Request::builder()
         .method("PATCH")
         .uri("/api/v1/tenants/bravo-flight")
@@ -250,7 +307,7 @@ async fn tenant_patch_cross_tenant_is_forbidden() {
     req.extensions_mut().insert(tenant_admin_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -303,7 +360,12 @@ async fn tenant_delete_admin_soft_deletes_and_audits() {
     assert_eq!(deletion_reason.as_deref(), Some("requested_by_tenant"));
 
     // Slug is no longer resolvable.
-    assert!(db.tenant_by_slug("alpha-academy").await.unwrap().is_none());
+    assert!(
+        db.visible_tenant_by_slug("alpha-academy", Some(alpha.id))
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // Audit recorded.
     let count: i64 = sqlx::query_scalar(

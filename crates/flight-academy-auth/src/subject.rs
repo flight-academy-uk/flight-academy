@@ -1,9 +1,8 @@
 //! Subject — the entity for whom a policy is evaluated. Shape per
 //! ADR-001 §C and the `actor_class` refinement in ADR-010 §B.
 //!
-//! WS#4 populates `user_id`, `actor_class`, `tenant_id`; the richer slots
-//! (`roles`, `attributes`, `elevation`) are stub types until the real auth
-//! and aviation-attribute machinery lands.
+//! Subject attributes (ratings, medical class) and staff elevation
+//! (ADR-010 §C) are added with the features that read them.
 
 use std::collections::BTreeSet;
 
@@ -33,28 +32,31 @@ pub enum Role {
     TenantAdmin,
 }
 
-impl Role {
-    /// Parse a role from its config-file string form. Returns `None` for
-    /// unknown values; callers (dev_auth, future session decoders)
-    /// silently drop unknowns so a config file ahead of the binary's
-    /// known set degrades safely rather than failing open.
-    pub fn from_str_known(s: &str) -> Option<Self> {
-        match s {
-            "tenant-admin" | "tenant_admin" => Some(Self::TenantAdmin),
-            _ => None,
-        }
+/// A role name this build does not know.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnknownRole;
+
+impl core::fmt::Display for UnknownRole {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("unknown role")
     }
 }
 
-/// Stub. Real subject attributes (medical class, ratings, instructor
-/// seniority — the things that make aviation ABAC interesting per
-/// ADR-001 §C) land with the aviation domain crate.
-#[derive(Clone, Debug, Default)]
-pub struct SubjectAttributes;
+impl std::error::Error for UnknownRole {}
 
-/// Stub. Real elevation grants per ADR-010 §C land with the staff plane.
-#[derive(Clone, Debug)]
-pub struct Elevation;
+impl core::str::FromStr for Role {
+    type Err = UnknownRole;
+
+    /// Parse a role from its configuration form. Callers that read role
+    /// lists (dev auth today, session decoding later) drop unknown names,
+    /// so a list written for a newer build grants nothing extra.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "tenant-admin" | "tenant_admin" => Ok(Self::TenantAdmin),
+            _ => Err(UnknownRole),
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Subject {
@@ -64,6 +66,4 @@ pub struct Subject {
     /// `Member` calling the product API.
     pub tenant_id: Option<TenantId>,
     pub roles: BTreeSet<Role>,
-    pub attributes: SubjectAttributes,
-    pub elevation: Option<Elevation>,
 }
