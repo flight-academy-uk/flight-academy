@@ -26,7 +26,7 @@ Individual pilots may hold accounts independent of any organisation, and may bel
 | Backend | Rust + Axum, distroless ARM containers |
 | Web | Maud + HTMX + Alpine + Tailwind (MASH stack, server-rendered by `apps/api`) |
 | Mobile | Flutter (offline-first) |
-| Database | PostgreSQL via CloudNativePG, row-level security |
+| Database | PostgreSQL 18+ via CloudNativePG, row-level security |
 | Objects | MinIO (S3-compatible) |
 | Auth | Passwordless — magic link, passkeys, push |
 | Mesh / IDS | Istio ambient + Cilium CNI + Tetragon |
@@ -86,6 +86,8 @@ scripts/check-all.sh
 Full setup guide will be at [docs/development/setup.md](docs/development/setup.md).
 
 ## Self-hosting
+
+Requires PostgreSQL 18 or later; the API refuses to start on an older server.
 
 Once v0.1 lands:
 

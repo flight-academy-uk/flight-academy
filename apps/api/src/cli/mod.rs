@@ -191,6 +191,8 @@ async fn serve(args: ServeArgs) -> Result<()> {
     }
 
     let db = flight_academy_db::Db::connect(&args.database.database_url, &pool).await?;
+    // Refuse to start on a server older than the oldest supported release.
+    db.verify_server_version().await?;
     // Refuse to start with a pool role that cannot drive the audit chain
     // writer; see `flight_academy_db::audit::verify_pool_role`.
     db.verify_audit_pool_role().await?;

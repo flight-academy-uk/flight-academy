@@ -16,6 +16,13 @@ pub enum Error {
     /// capability the writer needs. Every deficit would surface as an
     /// error at the first audited write; pre-flighting them at startup
     /// turns first-traffic failures into refuse-to-start.
+    /// The PostgreSQL server is older than the oldest supported version.
+    /// Both values are in `server_version_num` form (180000 is 18.0).
+    #[from(skip)]
+    ServerVersionUnsupported {
+        found: i32,
+        minimum: i32,
+    },
     #[from(skip)]
     AuditPoolRoleUnfit {
         role: String,

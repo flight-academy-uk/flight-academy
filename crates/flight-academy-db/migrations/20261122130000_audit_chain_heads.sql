@@ -9,6 +9,13 @@
 -- other, and finding the tip is a key lookup rather than a read across every
 -- audit_events partition.
 --
+-- Assumes no writer from before this migration is still appending. Such a
+-- writer would insert into audit_events without advancing the head, and the
+-- next append would link to a stale tip and fork the chain. That holds here
+-- because no release has shipped the previous writer; a future change to
+-- how chains are appended must not rely on it while old and new versions
+-- run side by side.
+--
 -- `seq` counts the rows appended to the chain; `tip_hash` is the newest
 -- row's payload_hash and `last_occurred_at` its occurred_at. A head with
 -- seq = 0 has no rows yet.

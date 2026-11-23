@@ -32,6 +32,10 @@ use uuid::Uuid;
 
 pub(crate) type Tx = Transaction<'static, Postgres>;
 
+/// Oldest supported PostgreSQL server, in `server_version_num` form. The
+/// tenant update uses `RETURNING old.*`, which PostgreSQL 18 introduced.
+const MIN_SERVER_VERSION_NUM: i32 = 180_000;
+
 /// Embedded migrator. Returned as a value so `flight-academy-test-support`
 /// can drive migrations against a fresh per-test database without needing
 /// to invoke `sqlx::migrate!` from outside this crate (the macro is
@@ -132,6 +136,18 @@ impl Db {
         audit::verify_pool_role(&mut conn).await
     }
 
+    /// Refuse a PostgreSQL server older than the oldest supported version,
+    /// so that an unsupported server stops the process at startup rather
+    /// than failing the first query that uses newer SQL.
+    pub async fn verify_server_version(&self) -> Result<()> {
+        let found = sqlx::query_scalar!(
+            r#"SELECT current_setting('server_version_num')::int AS "version!""#
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        check_server_version(found)
+    }
+
     /// Begin a transaction with the active tenant context set.
     ///
     /// The role (`app_api`) and `app.current_tenant` are both set with
@@ -172,5 +188,34 @@ impl TenantTx {
     pub async fn rollback(self) -> Result<()> {
         self.tx.rollback().await?;
         Ok(())
+    }
+}
+
+fn check_server_version(found: i32) -> Result<()> {
+    if found < MIN_SERVER_VERSION_NUM {
+        return Err(Error::ServerVersionUnsupported {
+            found,
+            minimum: MIN_SERVER_VERSION_NUM,
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_version_floor_is_postgresql_18() {
+        assert!(check_server_version(180_000).is_ok());
+        assert!(check_server_version(180_006).is_ok());
+        assert!(check_server_version(190_000).is_ok());
+        assert!(matches!(
+            check_server_version(170_005),
+            Err(Error::ServerVersionUnsupported {
+                found: 170_005,
+                minimum: 180_000
+            })
+        ));
     }
 }

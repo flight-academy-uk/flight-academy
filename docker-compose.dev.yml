@@ -4,8 +4,9 @@
 # not the security boundary on a multi-user dev host).
 #
 # Postgres major version (18) matches what CI's testcontainers run and what
-# CNPG can deploy in hosted production per ADR-002 §G — the migration set
-# is portable across PG 16/17/18.
+# CNPG can deploy in hosted production per ADR-002 §G. PostgreSQL 18 is the
+# minimum: the application uses 18-only SQL (`RETURNING old.*`) and refuses
+# to start on an older server.
 #
 # DATABASE_URL: postgres://postgres@127.0.0.1:5432/flight_academy_dev
 
