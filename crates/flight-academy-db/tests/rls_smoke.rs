@@ -5,11 +5,12 @@
 //! user-chain rows are invisible to tenant-scoped queries.
 #![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
+use flight_academy_core::TenantId;
 use flight_academy_db::Db;
 use flight_academy_test_support::{fresh_db, seed_tenant_audit_events};
 use uuid::Uuid;
 
-async fn count_for(db: &Db, tenant: Uuid) -> i64 {
+async fn count_for(db: &Db, tenant: TenantId) -> i64 {
     let mut tx = db.begin_tenant(tenant).await.unwrap();
     let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events")
         .fetch_one(tx.conn())
@@ -22,8 +23,8 @@ async fn count_for(db: &Db, tenant: Uuid) -> i64 {
 #[tokio::test]
 async fn rls_isolates_tenants_and_excludes_user_chain() {
     let db = fresh_db().await;
-    let tenant_a = Uuid::new_v4();
-    let tenant_b = Uuid::new_v4();
+    let tenant_a = TenantId::random();
+    let tenant_b = TenantId::random();
 
     seed_tenant_audit_events(&db, tenant_a, 3).await;
     seed_tenant_audit_events(&db, tenant_b, 2).await;
@@ -51,7 +52,7 @@ async fn rls_isolates_tenants_and_excludes_user_chain() {
         "tenant B sees its 2 rows"
     );
     assert_eq!(
-        count_for(&db, Uuid::new_v4()).await,
+        count_for(&db, TenantId::random()).await,
         0,
         "random tenant sees nothing"
     );

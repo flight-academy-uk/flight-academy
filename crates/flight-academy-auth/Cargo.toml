@@ -8,5 +8,4 @@ publish.workspace = true
 
 [dependencies]
 flight-academy-core = { workspace = true }
-uuid = { workspace = true, features = ["v4"] }
 

@@ -17,6 +17,7 @@
 use std::collections::BTreeSet;
 
 use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
+use flight_academy_core::{TenantId, UserId};
 use flight_academy_db::{Db, Tenant};
 use sqlx::PgPool;
 use testcontainers_modules::{
@@ -110,7 +111,7 @@ pub async fn fresh_db() -> Db {
 /// the CHECK constraint will reject invalid values, surfacing as a panic
 /// here which is intentional for tests.
 pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> Tenant {
-    let id = Uuid::new_v4();
+    let id = TenantId::random();
     sqlx::query(
         "INSERT INTO tenants (id, slug, name, tenant_type)
          VALUES ($1, $2, $3, $4)",
@@ -133,9 +134,9 @@ pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> 
 /// (attributes, elevation) stay at their stub defaults — those slots
 /// are not yet read by any policy and exercising them belongs in the
 /// PRs that populate them.
-pub fn member_subject(tenant_id: Uuid) -> Subject {
+pub fn member_subject(tenant_id: TenantId) -> Subject {
     Subject {
-        user_id: Uuid::new_v4(),
+        user_id: UserId::random(),
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles: BTreeSet::new(),
@@ -148,11 +149,11 @@ pub fn member_subject(tenant_id: Uuid) -> Subject {
 /// caller passes the tenant id the subject is a member-admin of; the
 /// role only unlocks administration of *that* tenant via the
 /// `TenantAdministration` policy.
-pub fn tenant_admin_subject(tenant_id: Uuid) -> Subject {
+pub fn tenant_admin_subject(tenant_id: TenantId) -> Subject {
     let mut roles = BTreeSet::new();
     roles.insert(Role::TenantAdmin);
     Subject {
-        user_id: Uuid::new_v4(),
+        user_id: UserId::random(),
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles,
@@ -165,7 +166,7 @@ pub fn tenant_admin_subject(tenant_id: Uuid) -> Subject {
 /// the superuser (the test connection's session role), so RLS is
 /// bypassed for the seed itself — that is intentional. The point is to
 /// give later tenant-scoped reads something to filter against.
-pub async fn seed_tenant_audit_events(db: &Db, tenant_id: Uuid, count: usize) {
+pub async fn seed_tenant_audit_events(db: &Db, tenant_id: TenantId, count: usize) {
     for i in 0..count {
         sqlx::query(
             "INSERT INTO audit_events

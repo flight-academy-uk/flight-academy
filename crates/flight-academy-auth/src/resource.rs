@@ -1,6 +1,6 @@
 //! Resource — the target of a policy evaluation. Shape per ADR-001 §C.
 
-use uuid::Uuid;
+use flight_academy_core::{TenantId, UserId};
 
 /// Stub variant set — grows as domain resources land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -16,8 +16,8 @@ pub struct ResourceAttributes;
 
 #[derive(Clone, Debug)]
 pub struct Resource {
-    pub tenant_id: Uuid,
+    pub tenant_id: TenantId,
     pub kind: ResourceKind,
-    pub owner: Option<Uuid>,
+    pub owner: Option<UserId>,
     pub attributes: ResourceAttributes,
 }
