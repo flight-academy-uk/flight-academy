@@ -11,12 +11,14 @@
 //! [`handlers`], one module per resource.
 
 pub mod assets;
+mod deny;
 #[cfg(feature = "embedded-static")]
 mod embedded;
 mod error;
 mod handlers;
 mod middleware;
 
+pub use deny::{AuditKey, MIN_AUDIT_KEY_LEN};
 pub use error::{ApiError, ProblemDetails};
 pub use handlers::audit_events::AuditEventCount;
 pub use handlers::health::HealthResponse;
@@ -58,14 +60,21 @@ pub struct AppConfig {
     pub body_limit: usize,
     /// Development-only subject injected on tenant routes; `None` -> 401.
     pub dev_subject: Option<Subject>,
+    /// Key for the keyed hashes in audited Denies.
+    pub audit_key: AuditKey,
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
+impl AppConfig {
+    /// Settings with a random audit key that is never saved, for tests and
+    /// for emitting the OpenAPI document. Not `Default`, so a production
+    /// path cannot reach it by accident: a server running on this key
+    /// writes Deny hashes that can never be matched to a slug afterwards.
+    pub fn ephemeral() -> Self {
         Self {
             request_timeout: Duration::from_secs(30),
             body_limit: 256 * 1024,
             dev_subject: None,
+            audit_key: AuditKey::random(),
         }
     }
 }
@@ -89,7 +98,8 @@ fn build(config: &AppConfig, with_dev_auth: bool) -> Built {
             handlers::tenants::tenant_patch,
             handlers::tenants::tenant_delete
         ))
-        .routes(routes!(handlers::audit_events::audit_event_count));
+        .routes(routes!(handlers::audit_events::audit_event_count))
+        .route_layer(axum::Extension(config.audit_key.clone()));
     if with_dev_auth {
         tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn_with_state(
             config.dev_subject.clone(),
@@ -220,7 +230,7 @@ pub fn app(config: &AppConfig) -> axum::Router {
 /// present in request extensions but the test attaches it directly per
 /// request rather than reading env vars.
 pub fn app_for_test() -> axum::Router {
-    build(&AppConfig::default(), false).router
+    build(&AppConfig::ephemeral(), false).router
 }
 
 /// [`app_for_test`] with explicit settings, for tests of the limits.
@@ -232,5 +242,5 @@ pub fn app_for_test_with(config: &AppConfig) -> axum::Router {
 /// (and any tooling that wants to compare the live contract against the
 /// committed `docs/api/openapi.json` — ADR-006 §A; format per ADR-018).
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    build(&AppConfig::default(), true).openapi
+    build(&AppConfig::ephemeral(), true).openapi
 }

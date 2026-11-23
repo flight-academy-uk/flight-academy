@@ -1,13 +1,13 @@
-//! Pure-logic permit/deny matrix for the WS#4 baseline policy. No I/O,
-//! no DB — the ABAC layer is data-in / decision-out.
+//! Pure-logic permit/deny matrix for the tenant policies. No I/O, no DB:
+//! the ABAC layer is data in, decision out.
 
 use std::collections::BTreeSet;
 
 use flight_academy_auth::{
-    Action, ActorClass, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Role,
-    Subject, SubjectAttributes, TenantAdministration, TenantOwnership,
+    Action, ActorClass, Decision, Denied, Policy, Resource, ResourceKind, Role, Subject,
+    TenantAdministration, TenantOwnership, UnknownRole, authorise,
 };
-use flight_academy_core::{TenantId, UserId};
+use flight_academy_core::{Error, TenantId, UserId};
 
 fn subject(actor_class: ActorClass, tenant_id: Option<TenantId>) -> Subject {
     Subject {
@@ -15,8 +15,6 @@ fn subject(actor_class: ActorClass, tenant_id: Option<TenantId>) -> Subject {
         actor_class,
         tenant_id,
         roles: BTreeSet::new(),
-        attributes: SubjectAttributes,
-        elevation: None,
     }
 }
 
@@ -30,8 +28,6 @@ fn resource(tenant_id: TenantId) -> Resource {
     Resource {
         tenant_id,
         kind: ResourceKind::AuditEvent,
-        owner: None,
-        attributes: ResourceAttributes,
     }
 }
 
@@ -115,4 +111,57 @@ fn tenant_administration_denies_subject_without_tenant() {
         &resource(TenantId::random()),
     );
     assert!(matches!(decision, Decision::Deny { .. }));
+}
+
+#[test]
+fn tenant_ownership_denies_staff_and_system_even_in_the_tenant() {
+    // Staff and system actors do not use the product API (ADR-010 §B), so
+    // a tenant context does not let them through.
+    let t = TenantId::random();
+    for actor_class in [ActorClass::Staff, ActorClass::System] {
+        let decision = TenantOwnership.permit(
+            &subject(actor_class, Some(t)),
+            Action::ReadTenant,
+            &resource(t),
+        );
+        match decision {
+            Decision::Deny { reason } => assert!(reason.contains("only members")),
+            other => panic!("expected Deny for {actor_class:?}, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn authorise_maps_permit_to_ok_and_deny_to_denied() {
+    let t = TenantId::random();
+    assert!(
+        authorise(
+            &TenantOwnership,
+            &subject(ActorClass::Member, Some(t)),
+            Action::ReadTenant,
+            &resource(t),
+        )
+        .is_ok()
+    );
+    let denied = authorise(
+        &TenantAdministration,
+        &subject(ActorClass::Member, Some(t)),
+        Action::UpdateTenant,
+        &resource(t),
+    );
+    assert_eq!(
+        denied,
+        Err(Denied {
+            reason: "subject is not a tenant-admin"
+        })
+    );
+    assert!(matches!(Error::from(denied.unwrap_err()), Error::Forbidden));
+}
+
+#[test]
+fn roles_parse_from_their_configuration_names() {
+    assert_eq!("tenant-admin".parse::<Role>(), Ok(Role::TenantAdmin));
+    assert_eq!("tenant_admin".parse::<Role>(), Ok(Role::TenantAdmin));
+    assert_eq!("superuser".parse::<Role>(), Err(UnknownRole));
+    assert_eq!("".parse::<Role>(), Err(UnknownRole));
 }

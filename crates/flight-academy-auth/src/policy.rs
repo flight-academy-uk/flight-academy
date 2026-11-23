@@ -1,74 +1,95 @@
-//! Policy evaluation. `Decision` per ADR-001 §C; `Policy` trait the same.
+//! Policy evaluation. `Decision` per ADR-001 §C; `Policy` the same.
 //!
-//! WS#4 ships one concrete policy — [`TenantOwnership`] — which checks
-//! that the calling subject's tenant matches the resource's tenant. It is
-//! the minimum policy any tenant-scoped product-API call must pass; richer
-//! policies (role-gated, attribute-gated) layer on top in later commits.
+//! A policy decides what a caller may do with a resource it can already
+//! see. Visibility itself is a predicate in the query that loads the
+//! resource, so a resource the caller cannot see is never handed to a
+//! policy: it is not found (ADR-033). A `Deny` here therefore means a
+//! visible resource and a forbidden action, which the HTTP layer reports
+//! as `403`.
 
-use crate::{Action, Resource, Role, Subject};
+use flight_academy_core::Error;
+
+use crate::{Action, ActorClass, Resource, Role, Subject};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Decision {
     Permit,
-    Deny {
-        reason: String,
-    },
-    /// The policy is silent on this (subject, action, resource) triple —
-    /// composed policies treat this as "ask the next layer". A request
-    /// where every applicable policy returns `NotApplicable` is denied
-    /// by default (deny-by-default — ADR-001 §C).
-    NotApplicable,
+    Deny { reason: &'static str },
 }
 
 pub trait Policy {
     fn permit(&self, subject: &Subject, action: Action, resource: &Resource) -> Decision;
 }
 
-/// Baseline policy: caller's `tenant_id` must match the resource's
-/// `tenant_id`. Every tenant-scoped product-API call must pass this before
-/// any action-specific policy is even consulted (ADR-006 §C: the
-/// `{tenant}` path segment must match the caller's tenant or the request
-/// is `403`).
+/// A policy refused the action. The HTTP layer records it and answers
+/// `403`; the reason goes to the audit row and debug log, never to the
+/// response.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Denied {
+    pub reason: &'static str,
+}
+
+impl From<Denied> for Error {
+    fn from(_: Denied) -> Self {
+        Error::Forbidden
+    }
+}
+
+/// Evaluate `policy`, turning a Deny into [`Denied`] and logging its
+/// reason at debug level.
+pub fn authorise(
+    policy: &impl Policy,
+    subject: &Subject,
+    action: Action,
+    resource: &Resource,
+) -> Result<(), Denied> {
+    match policy.permit(subject, action, resource) {
+        Decision::Permit => Ok(()),
+        Decision::Deny { reason } => {
+            tracing::debug!(?action, kind = ?resource.kind, reason, "policy denied");
+            Err(Denied { reason })
+        }
+    }
+}
+
+/// Baseline for every tenant-scoped product-API call: the caller is a
+/// member acting in the resource's tenant. Staff and system actors do not
+/// use the product API (ADR-010 §B), so they are denied even when a tenant
+/// context is present.
 pub struct TenantOwnership;
 
 impl Policy for TenantOwnership {
     fn permit(&self, subject: &Subject, _action: Action, resource: &Resource) -> Decision {
+        if subject.actor_class != ActorClass::Member {
+            return Decision::Deny {
+                reason: "only members use the product API",
+            };
+        }
         match subject.tenant_id {
             Some(t) if t == resource.tenant_id => Decision::Permit,
             Some(_) => Decision::Deny {
-                reason: "subject tenant does not match resource tenant".to_string(),
+                reason: "subject tenant does not match resource tenant",
             },
             None => Decision::Deny {
-                reason: "subject has no tenant context".to_string(),
+                reason: "subject has no tenant context",
             },
         }
     }
 }
 
-/// Tenant administration: composes [`TenantOwnership`] with a
-/// `Role::TenantAdmin` requirement. Gates mutation endpoints on the
-/// tenants resource (PATCH / DELETE today; future tenant-admin-only
-/// actions inherit this policy).
-///
-/// Composition order matters for the deny reason: `TenantOwnership`
-/// fires first because a non-owner is more diagnostically a 403 "not
-/// your tenant" than "missing role". A non-owner with the role is still
-/// denied — the role doesn't unlock cross-tenant administration.
+/// Tenant administration: [`TenantOwnership`] plus `Role::TenantAdmin`.
+/// Gates the mutations on the tenant resource (PATCH and DELETE today).
+/// The role never unlocks another tenant: ownership is checked first.
 pub struct TenantAdministration;
 
 impl Policy for TenantAdministration {
     fn permit(&self, subject: &Subject, action: Action, resource: &Resource) -> Decision {
         match TenantOwnership.permit(subject, action, resource) {
-            Decision::Permit => {
-                if subject.roles.contains(&Role::TenantAdmin) {
-                    Decision::Permit
-                } else {
-                    Decision::Deny {
-                        reason: "subject is not a tenant-admin".to_string(),
-                    }
-                }
-            }
-            other => other,
+            Decision::Permit if subject.roles.contains(&Role::TenantAdmin) => Decision::Permit,
+            Decision::Permit => Decision::Deny {
+                reason: "subject is not a tenant-admin",
+            },
+            deny => deny,
         }
     }
 }

@@ -79,7 +79,58 @@ pub struct AuditEvent {
     pub prev_hash: Option<Vec<u8>>,
 }
 
+/// The chain an audit row is appended to (ADR-009 §C). Each has its own
+/// `audit_chain_heads` row, so appends to different chains never wait for
+/// each other.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Chain {
+    /// A tenant's chain. Its rows carry `tenant_id`, so RLS shows them in
+    /// that tenant's context.
+    Tenant(TenantId),
+    /// A user's own chain, for events with no tenant context.
+    User(UserId),
+}
+
+impl Chain {
+    fn kind(self) -> &'static str {
+        match self {
+            Self::Tenant(_) => "tenant",
+            Self::User(_) => "user",
+        }
+    }
+
+    fn id(self) -> Uuid {
+        match self {
+            Self::Tenant(id) => id.as_uuid(),
+            Self::User(id) => id.as_uuid(),
+        }
+    }
+
+    fn tenant_id(self) -> Option<Uuid> {
+        match self {
+            Self::Tenant(id) => Some(id.as_uuid()),
+            Self::User(_) => None,
+        }
+    }
+}
+
 impl Db {
+    /// Append a row to `chain` in its own transaction. See
+    /// [`Db::write_tenant_audit_event`] for the arguments and the pool-role
+    /// invariant, which apply unchanged.
+    pub async fn write_audit_event(
+        &self,
+        chain: Chain,
+        actor_class: &'static str,
+        actor_id: Option<UserId>,
+        payload: serde_json::Value,
+    ) -> Result<AuditEvent> {
+        let mut tx = self.begin_audited().await?;
+        let event = append_in_tx(&mut tx, chain, actor_class, actor_id, &payload).await?;
+        tx.commit().await?;
+        Ok(event)
+    }
+
     /// Append a row to the tenant audit chain. The chain is selected by
     /// `tenant_id`; `chain_kind` is `'tenant'`. Returns the new row's
     /// `(id, occurred_at, payload_hash, prev_hash)` — useful for response
@@ -121,12 +172,8 @@ impl Db {
         tenant_id: TenantId,
         payload: serde_json::Value,
     ) -> Result<AuditEvent> {
-        let mut tx = self.begin_audited().await?;
-        let event =
-            write_tenant_audit_event_in_tx(&mut tx, actor_class, actor_id, tenant_id, &payload)
-                .await?;
-        tx.commit().await?;
-        Ok(event)
+        self.write_audit_event(Chain::Tenant(tenant_id), actor_class, actor_id, payload)
+            .await
     }
 }
 
@@ -157,15 +204,34 @@ pub async fn write_tenant_audit_event_in_tx(
     tenant_id: TenantId,
     payload: &serde_json::Value,
 ) -> Result<AuditEvent> {
+    append_in_tx(
+        conn,
+        Chain::Tenant(tenant_id),
+        actor_class,
+        actor_id,
+        payload,
+    )
+    .await
+}
+
+/// Append a row to `chain` inside a caller-owned transaction, under the
+/// same caller responsibilities as [`write_tenant_audit_event_in_tx`].
+async fn append_in_tx(
+    conn: &mut sqlx::PgConnection,
+    chain: Chain,
+    actor_class: &'static str,
+    actor_id: Option<UserId>,
+    payload: &serde_json::Value,
+) -> Result<AuditEvent> {
     // Audit rows and their hash input hold bare UUIDs: the canonical row is
     // part of the chain format and must not change with the wire form.
     let actor_id = actor_id.map(|id| id.as_uuid());
-    let tenant_id = tenant_id.as_uuid();
+    let (chain_kind, chain_id, tenant_id) = (chain.kind(), chain.id(), chain.tenant_id());
 
     // Lock this chain's head, creating it on the chain's first append.
     // Under READ COMMITTED a writer that waits here resumes with the head
     // as the previous holder committed it.
-    let head = lock_tenant_chain_head(conn, tenant_id).await?;
+    let head = lock_chain_head(conn, chain_kind, chain_id).await?;
     let prev_hash = head.tip_hash;
 
     // Read after the lock, so a writer that began earlier but waited does
@@ -193,9 +259,9 @@ pub async fn write_tenant_audit_event_in_tx(
         occurred_at: occurred_at_str,
         actor_class,
         actor_id,
-        tenant_id: Some(tenant_id),
-        chain_kind: "tenant",
-        chain_id: Some(tenant_id),
+        tenant_id,
+        chain_kind,
+        chain_id: Some(chain_id),
         payload,
     };
     let canonical = serde_jcs::to_vec(&row_input)
@@ -219,13 +285,14 @@ pub async fn write_tenant_audit_event_in_tx(
              chain_kind, chain_id, prev_hash, payload, payload_hash)
          VALUES
             ($1, $2, $3, $4, $5,
-             'tenant', $6, $7, $8, $9)",
+             $6, $7, $8, $9, $10)",
         row_id,
         occurred_at,
         actor_class,
         actor_id,
         tenant_id,
-        tenant_id,
+        chain_kind,
+        chain_id,
         prev_hash.as_deref(),
         payload,
         &payload_hash
@@ -236,10 +303,11 @@ pub async fn write_tenant_audit_event_in_tx(
     sqlx::query!(
         "UPDATE audit_chain_heads
             SET seq              = seq + 1,
-                tip_hash         = $2,
-                last_occurred_at = $3
-          WHERE chain_kind = 'tenant' AND chain_id = $1",
-        tenant_id,
+                tip_hash         = $3,
+                last_occurred_at = $4
+          WHERE chain_kind = $1 AND chain_id = $2",
+        chain_kind,
+        chain_id,
         &payload_hash,
         occurred_at
     )
@@ -260,21 +328,23 @@ struct ChainHead {
     tip_hash: Option<Vec<u8>>,
 }
 
-/// Lock the tenant chain's head row until the transaction ends, creating
-/// the row first if this is the chain's first append. Two first appends
-/// racing to create it both end up locking the same row: the loser's
+/// Lock a chain's head row until the transaction ends, creating the row
+/// first if this is the chain's first append. Two first appends racing to
+/// create it both end up locking the same row: the loser's
 /// `ON CONFLICT DO NOTHING` waits for the winner and then does nothing.
-async fn lock_tenant_chain_head(
+async fn lock_chain_head(
     conn: &mut sqlx::PgConnection,
-    tenant_id: Uuid,
+    chain_kind: &str,
+    chain_id: Uuid,
 ) -> Result<ChainHead> {
     loop {
         let head = sqlx::query_as!(
             ChainHead,
             "SELECT tip_hash FROM audit_chain_heads
-              WHERE chain_kind = 'tenant' AND chain_id = $1
+              WHERE chain_kind = $1 AND chain_id = $2
                 FOR UPDATE",
-            tenant_id
+            chain_kind,
+            chain_id
         )
         .fetch_optional(&mut *conn)
         .await?;
@@ -283,9 +353,10 @@ async fn lock_tenant_chain_head(
         }
         sqlx::query!(
             "INSERT INTO audit_chain_heads (chain_kind, chain_id)
-             VALUES ('tenant', $1)
+             VALUES ($1, $2)
              ON CONFLICT (chain_kind, chain_id) DO NOTHING",
-            tenant_id
+            chain_kind,
+            chain_id
         )
         .execute(&mut *conn)
         .await?;

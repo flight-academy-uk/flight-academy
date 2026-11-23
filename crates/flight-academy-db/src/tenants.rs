@@ -1,4 +1,5 @@
-//! Tenants: slug lookup, the audited writes, and the per-tenant audit count.
+//! Tenants: visible slug lookup, the audited writes, and the per-tenant
+//! audit count.
 //! Authorisation is decided by the caller (the ABAC layer); this module only
 //! reads and writes rows.
 //!
@@ -21,17 +22,26 @@ pub struct Tenant {
 }
 
 impl Db {
-    /// Resolve a public tenant slug to its row. `Ok(None)` when no live
-    /// tenant has that slug. Runs outside any tenant-scoped transaction,
-    /// because the caller's tenant context is not known until it resolves.
-    pub async fn tenant_by_slug(&self, slug: &str) -> Result<Option<Tenant>> {
+    /// The live tenant with this slug, if `viewer` may see it: today, the
+    /// viewer's own tenant only. `Ok(None)` both when no live tenant has the
+    /// slug and when it belongs to someone else. Visibility is part of the
+    /// query rather than a check on the loaded row, so the two cases run
+    /// the same statement and cannot be told apart (ADR-033). A viewer
+    /// with no tenant context sees nothing.
+    pub async fn visible_tenant_by_slug(
+        &self,
+        slug: &str,
+        viewer: Option<TenantId>,
+    ) -> Result<Option<Tenant>> {
         let tenant = sqlx::query_as!(
             Tenant,
             r#"SELECT id AS "id: TenantId", slug, name, tenant_type, settings
-               FROM tenants
-              WHERE slug = $1
-                AND deleted_at IS NULL"#,
-            slug
+                 FROM tenants
+                WHERE slug = $1
+                  AND id = $2
+                  AND deleted_at IS NULL"#,
+            slug,
+            viewer.map(|id| id.as_uuid())
         )
         .fetch_optional(&self.pool)
         .await?;

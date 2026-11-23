@@ -12,7 +12,7 @@
   "paths": {
     "/api/v1/tenants/{tenant}": {
       "get": {
-        "summary": "GET a tenant by slug. Returns the public read shape if the subject is\npermitted to see this tenant (today: TenantOwnership, i.e. the subject\nbelongs to it).",
+        "summary": "GET a tenant by slug. Returns the public read shape of the caller's\nown tenant; any other slug is `404`.",
         "operationId": "tenant_get",
         "parameters": [
           {
@@ -47,7 +47,7 @@
             }
           },
           "403": {
-            "description": "Subject is not a member of this tenant",
+            "description": "Caller is not a member; staff and system actors do not use the product API",
             "content": {
               "application/json": {
                 "schema": {
@@ -57,7 +57,7 @@
             }
           },
           "404": {
-            "description": "No live tenant with that slug",
+            "description": "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's",
             "content": {
               "application/json": {
                 "schema": {
@@ -127,7 +127,7 @@
             }
           },
           "403": {
-            "description": "Subject is not a tenant-admin of this tenant",
+            "description": "Caller can see the tenant but is not its tenant-admin",
             "content": {
               "application/json": {
                 "schema": {
@@ -137,7 +137,7 @@
             }
           },
           "404": {
-            "description": "No live tenant with that slug",
+            "description": "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's",
             "content": {
               "application/json": {
                 "schema": {
@@ -214,7 +214,7 @@
             }
           },
           "403": {
-            "description": "Subject is not a tenant-admin of this tenant",
+            "description": "Caller can see the tenant but is not its tenant-admin",
             "content": {
               "application/json": {
                 "schema": {
@@ -224,7 +224,7 @@
             }
           },
           "404": {
-            "description": "No live tenant with that slug",
+            "description": "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's",
             "content": {
               "application/json": {
                 "schema": {
@@ -248,8 +248,8 @@
     },
     "/api/v1/tenants/{tenant}/audit-events/count": {
       "get": {
-        "summary": "Tenant-scoped audit-event count — the walking-skeleton round-trip that\nproves ABAC + RLS end to end. The slug → id lookup happens before\npolicy evaluation (unknown slug → 404, mismatched tenant → 403);\n`Db::begin_tenant` opens a transaction with `SET LOCAL ROLE app_api`\n+ the `app.current_tenant` GUC so the SELECT below is filtered by the\nRLS policy on `audit_events`.",
-        "description": "Real audit-event browsing belongs in the staff plane (`apps/admin`,\nADR-010 §I); this counts rows for the WS#4 demonstration without\nexposing audit content.",
+        "summary": "Tenant-scoped audit-event count — the walking-skeleton round-trip that\nproves ABAC + RLS end to end. The slug resolves only to the caller's own\ntenant (any other slug is `404`), the policy then checks the caller is a\nmember, and `Db::begin_tenant` runs the count as `app_api` with\n`app.current_tenant` set, so RLS on `audit_events` filters the rows.",
+        "description": "Real audit-event browsing belongs in the staff plane (`apps/admin`,\nADR-010 §I); this counts rows without exposing audit content.",
         "operationId": "audit_event_count",
         "parameters": [
           {
@@ -284,7 +284,7 @@
             }
           },
           "403": {
-            "description": "Subject's tenant does not match path tenant",
+            "description": "Caller is not a member; staff and system actors do not use the product API",
             "content": {
               "application/json": {
                 "schema": {
@@ -294,7 +294,7 @@
             }
           },
           "404": {
-            "description": "No live tenant with that slug",
+            "description": "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's",
             "content": {
               "application/json": {
                 "schema": {

@@ -892,8 +892,10 @@ dependencies = [
  "flight-academy-db",
  "flight-academy-test-support",
  "futures-util",
+ "hmac",
  "http-body-util",
  "maud",
+ "rand_core 0.6.4",
  "rust-embed",
  "serde",
  "serde_json",
@@ -907,6 +909,7 @@ dependencies = [
  "utoipa",
  "utoipa-axum",
  "uuid",
+ "zeroize",
  "zstd",
 ]
 
@@ -915,6 +918,7 @@ name = "flight-academy-auth"
 version = "0.1.0"
 dependencies = [
  "flight-academy-core",
+ "tracing",
 ]
 
 [[package]]

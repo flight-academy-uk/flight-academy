@@ -120,6 +120,20 @@ cargo test --workspace                               # spins up testcontainers
 scripts/check-all.sh                                 # mirrors the CI quality gate
 ```
 
+### Running the server locally
+
+`serve` needs a database and a key file for the keyed hashes written to audit rows: at least 32 random bytes, readable only by you, kept outside the repository and stable across restarts. `serve` warns if group or others can read it.
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+export DATABASE_URL=postgres://postgres@127.0.0.1:5432/flight_academy_dev
+head -c 32 /dev/urandom > "${XDG_CONFIG_HOME:-$HOME/.config}/flight-academy-audit.key"
+chmod 600 "${XDG_CONFIG_HOME:-$HOME/.config}/flight-academy-audit.key"
+export FA_AUDIT_KEY_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/flight-academy-audit.key"
+cargo run --bin flight-academy -- migrate
+cargo run --bin flight-academy -- serve
+```
+
 ### Changing a database query
 
 Every query is a compile-time-checked sqlx macro (`query!`, `query_as!`, `query_scalar!`); the runtime functions are rejected by clippy outside test code. Builds check queries against the committed `.sqlx/` cache (`SQLX_OFFLINE` is set in `.cargo/config.toml`), so no database is needed to build. After adding or changing a query, or a migration that affects one, regenerate the cache against a migrated database and commit it with the change:

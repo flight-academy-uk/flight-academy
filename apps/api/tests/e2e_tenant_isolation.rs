@@ -14,6 +14,8 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
+use flight_academy_api::{AppConfig, AuditKey};
+use flight_academy_auth::ActorClass;
 use flight_academy_core::TenantId;
 use flight_academy_test_support::{
     fresh_db, member_subject, seed_tenant, seed_tenant_audit_events, tenant_admin_subject,
@@ -46,7 +48,7 @@ async fn audit_count_tenant_match_serves_count() {
 }
 
 #[tokio::test]
-async fn audit_count_tenant_mismatch_is_forbidden() {
+async fn audit_count_other_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
@@ -55,9 +57,8 @@ async fn audit_count_tenant_mismatch_is_forbidden() {
 
     let app = flight_academy_api::app_for_test().layer(Extension(db));
 
-    // Subject is alpha; path is bravo. TenantOwnership denies before any
-    // tenant-scoped DB call (the slug resolves successfully — the policy
-    // check is what fails).
+    // Subject is alpha; path is bravo. Bravo exists, but it is not visible
+    // to alpha, so the slug does not resolve (ADR-033).
     let mut req = Request::builder()
         .uri("/api/v1/tenants/bravo-flight/audit-events/count")
         .body(Body::empty())
@@ -65,7 +66,7 @@ async fn audit_count_tenant_mismatch_is_forbidden() {
     req.extensions_mut().insert(member_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -114,7 +115,7 @@ async fn tenant_get_owner_sees_profile() {
 }
 
 #[tokio::test]
-async fn tenant_get_non_member_is_forbidden() {
+async fn tenant_get_other_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
@@ -124,11 +125,67 @@ async fn tenant_get_non_member_is_forbidden() {
         .uri("/api/v1/tenants/bravo-flight")
         .body(Body::empty())
         .unwrap();
-    // Subject belongs to alpha; asking for bravo.
+    // Subject belongs to alpha; asking for bravo, which exists.
     req.extensions_mut().insert(member_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+/// The response for another tenant's slug must not differ from the one for
+/// a slug nobody has, apart from the per-request ID, or it would tell a
+/// caller which slugs exist (ADR-033).
+#[tokio::test]
+async fn other_tenant_and_unknown_slug_get_identical_responses() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    let mut responses = Vec::new();
+    for slug in ["bravo-flight", "no-such-tenant"] {
+        let mut req = Request::builder()
+            .uri(format!("/api/v1/tenants/{slug}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(member_subject(alpha.id));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        let status = resp.status();
+        let mut headers = resp.headers().clone();
+        headers.remove("x-request-id");
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let mut body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        body.as_object_mut().unwrap().remove("request_id");
+        responses.push((status, headers, body));
+    }
+    assert_eq!(responses[0].0, StatusCode::NOT_FOUND);
+    assert_eq!(responses[0], responses[1]);
+}
+
+/// Staff do not use the product API (ADR-010 §B). Without a tenant context
+/// nothing is visible to them; with one, the tenant is visible and the
+/// policy refuses the action.
+#[tokio::test]
+async fn staff_cannot_use_the_product_api() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db));
+
+    for (tenant_id, expected) in [
+        (None, StatusCode::NOT_FOUND),
+        (Some(alpha.id), StatusCode::FORBIDDEN),
+    ] {
+        let mut staff = member_subject(alpha.id);
+        staff.actor_class = ActorClass::Staff;
+        staff.tenant_id = tenant_id;
+        let mut req = Request::builder()
+            .uri("/api/v1/tenants/alpha-academy")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(staff);
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), expected, "staff with tenant {tenant_id:?}");
+    }
 }
 
 #[tokio::test]
@@ -234,13 +291,14 @@ async fn tenant_patch_non_admin_is_forbidden() {
 }
 
 #[tokio::test]
-async fn tenant_patch_cross_tenant_is_forbidden() {
+async fn tenant_patch_cross_tenant_is_not_found() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let _bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
     let app = flight_academy_api::app_for_test().layer(Extension(db));
 
-    // Subject is tenant-admin of alpha but patching bravo.
+    // Subject is tenant-admin of alpha but patching bravo, which it cannot
+    // see: the role does not reach another tenant.
     let mut req = Request::builder()
         .method("PATCH")
         .uri("/api/v1/tenants/bravo-flight")
@@ -250,7 +308,7 @@ async fn tenant_patch_cross_tenant_is_forbidden() {
     req.extensions_mut().insert(tenant_admin_subject(alpha.id));
 
     let resp = app.oneshot(req).await.unwrap();
-    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -303,7 +361,12 @@ async fn tenant_delete_admin_soft_deletes_and_audits() {
     assert_eq!(deletion_reason.as_deref(), Some("requested_by_tenant"));
 
     // Slug is no longer resolvable.
-    assert!(db.tenant_by_slug("alpha-academy").await.unwrap().is_none());
+    assert!(
+        db.visible_tenant_by_slug("alpha-academy", Some(alpha.id))
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // Audit recorded.
     let count: i64 = sqlx::query_scalar(
@@ -416,4 +479,123 @@ async fn healthz_needs_no_subject() {
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Payloads on a tenant's chain, oldest first.
+async fn chain_payloads(db: &flight_academy_db::Db, tenant: TenantId) -> Vec<serde_json::Value> {
+    sqlx::query_scalar(
+        "SELECT payload FROM audit_events
+          WHERE chain_kind = 'tenant' AND chain_id = $1
+          ORDER BY occurred_at, id",
+    )
+    .bind(tenant)
+    .fetch_all(db.pool())
+    .await
+    .unwrap()
+}
+
+/// A router whose audit key is known, so tests can compute the hashes it
+/// records.
+fn app_with_known_key(db: &flight_academy_db::Db) -> (axum::Router, AuditKey) {
+    let key = AuditKey::from_bytes(vec![7; 32]).unwrap();
+    let config = AppConfig {
+        audit_key: key.clone(),
+        ..AppConfig::ephemeral()
+    };
+    let app = flight_academy_api::app_for_test_with(&config).layer(Extension(db.clone()));
+    (app, key)
+}
+
+/// A not-found lookup is a Deny recorded on the caller's chain (ADR-033
+/// §C). Another tenant's slug and an unknown slug write the same row apart
+/// from the keyed hash of the slug as sent, and nothing is written to the
+/// target's chain.
+#[tokio::test]
+async fn not_found_lookups_are_recorded_alike_on_the_callers_chain() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
+    let (app, key) = app_with_known_key(&db);
+
+    for slug in ["bravo-flight", "no-such-tenant"] {
+        let mut req = Request::builder()
+            .uri(format!("/api/v1/tenants/{slug}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(member_subject(alpha.id));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    for (row, slug) in rows.iter().zip(["bravo-flight", "no-such-tenant"]) {
+        assert_eq!(
+            *row,
+            serde_json::json!({
+                "action": "deny",
+                "operation": "tenant.read",
+                "route": "GET /api/v1/tenants/{tenant}",
+                "requested": { "tenant_slug_hmac": key.mac_hex("tenant-slug", slug) },
+                "reason": "not_visible_or_absent",
+            })
+        );
+        assert!(!row.to_string().contains(slug), "slug text in {row}");
+    }
+    assert!(chain_payloads(&db, bravo.id).await.is_empty());
+}
+
+/// A policy Deny on a visible tenant is recorded with the policy's reason.
+#[tokio::test]
+async fn policy_denies_are_recorded_with_their_reason() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let (app, key) = app_with_known_key(&db);
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"Renamed"}"#))
+        .unwrap();
+    req.extensions_mut().insert(member_subject(alpha.id));
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(
+        rows,
+        vec![serde_json::json!({
+            "action": "deny",
+            "operation": "tenant.update",
+            "route": "PATCH /api/v1/tenants/{tenant}",
+            "requested": { "tenant_slug_hmac": key.mac_hex("tenant-slug", "alpha-academy") },
+            "reason": "subject is not a tenant-admin",
+        })]
+    );
+}
+
+/// A path segment that is not a well-formed slug is recorded only as
+/// malformed, so free text a caller types does not reach the audit chain.
+#[tokio::test]
+async fn malformed_keys_are_not_copied_into_the_audit_chain() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    let mut req = Request::builder()
+        .uri("/api/v1/tenants/jane.doe@example.com")
+        .body(Body::empty())
+        .unwrap();
+    req.extensions_mut().insert(member_subject(alpha.id));
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0]["requested"],
+        serde_json::json!({ "malformed": true })
+    );
+    assert!(!rows[0].to_string().contains("jane"));
 }

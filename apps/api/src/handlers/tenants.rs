@@ -4,13 +4,12 @@
 
 use axum::{
     Extension, Json,
-    extract::Path,
-    http::StatusCode,
+    extract::{MatchedPath, Path},
+    http::{Method, StatusCode},
     response::{IntoResponse, Response},
 };
 use flight_academy_auth::{
-    Action, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Subject,
-    TenantAdministration, TenantOwnership,
+    Action, Resource, ResourceKind, Subject, TenantAdministration, TenantOwnership,
 };
 use flight_academy_core::Error;
 use flight_academy_core::TenantId;
@@ -18,6 +17,7 @@ use flight_academy_db::{Db, Tenant};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::deny::{AuditKey, DenyContext};
 use crate::error::{ApiError, ProblemDetails};
 
 /// Public read shape for a tenant. Mirrors `flight_academy_db::Tenant`
@@ -44,18 +44,25 @@ impl From<Tenant> for TenantResponse {
     }
 }
 
-/// Resolve a path-supplied slug to its tenant row, or map to a 404.
-/// Centralised so every slug-keyed handler returns the same NotFound
-/// shape and doesn't accidentally diverge.
-pub async fn resolve_tenant(db: &Db, slug: &str) -> Result<Tenant, ApiError> {
-    db.tenant_by_slug(slug)
+/// Resolve the path slug to a tenant the caller can see, or record the
+/// Deny and return `404`. A tenant that exists but belongs to someone else
+/// is the same `404` with the same body, after the same work: visibility
+/// is part of the lookup query and the recorded row does not depend on
+/// which case it was (ADR-033). Every slug-keyed handler goes through here
+/// so none can diverge.
+pub async fn resolve_tenant(access: &DenyContext<'_>) -> Result<Tenant, ApiError> {
+    match access
+        .db
+        .visible_tenant_by_slug(access.requested_tenant, access.subject.tenant_id)
         .await?
-        .ok_or_else(|| Error::NotFound { resource: "tenant" }.into())
+    {
+        Some(tenant) => Ok(tenant),
+        None => Err(access.not_found("tenant").await),
+    }
 }
 
-/// GET a tenant by slug. Returns the public read shape if the subject is
-/// permitted to see this tenant (today: TenantOwnership, i.e. the subject
-/// belongs to it).
+/// GET a tenant by slug. Returns the public read shape of the caller's
+/// own tenant; any other slug is `404`.
 #[utoipa::path(
     get,
     path = "/api/v1/tenants/{tenant}",
@@ -65,27 +72,34 @@ pub async fn resolve_tenant(db: &Db, slug: &str) -> Result<Tenant, ApiError> {
     responses(
         (status = 200, description = "Tenant profile", body = TenantResponse),
         (status = 401, description = "No authenticated subject", body = ProblemDetails),
-        (status = 403, description = "Subject is not a member of this tenant", body = ProblemDetails),
-        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
+        (status = 403, description = "Caller is not a member; staff and system actors do not use the product API", body = ProblemDetails),
+        (status = 404, description = "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's", body = ProblemDetails),
         (status = 500, description = "Internal error", body = ProblemDetails),
     ),
 )]
 pub async fn tenant_get(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
 ) -> Result<Json<TenantResponse>, ApiError> {
-    let tenant = resolve_tenant(&db, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::ReadTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
-        owner: None,
-        attributes: ResourceAttributes,
     };
-    match TenantOwnership.permit(&subject, Action::ReadTenant, &resource) {
-        Decision::Permit => {}
-        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
-    }
+    access.authorise(&TenantOwnership, &resource).await?;
     Ok(Json(tenant.into()))
 }
 
@@ -129,28 +143,35 @@ pub struct TenantDeleteRequest {
         (status = 200, description = "Updated tenant profile", body = TenantResponse),
         (status = 400, description = "Validation failed", body = ProblemDetails),
         (status = 401, description = "No authenticated subject", body = ProblemDetails),
-        (status = 403, description = "Subject is not a tenant-admin of this tenant", body = ProblemDetails),
-        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
+        (status = 403, description = "Caller can see the tenant but is not its tenant-admin", body = ProblemDetails),
+        (status = 404, description = "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's", body = ProblemDetails),
         (status = 500, description = "Internal error", body = ProblemDetails),
     ),
 )]
 pub async fn tenant_patch(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
     Json(req): Json<TenantPatchRequest>,
 ) -> Result<Json<TenantResponse>, ApiError> {
-    let tenant = resolve_tenant(&db, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::UpdateTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
-        owner: None,
-        attributes: ResourceAttributes,
     };
-    match TenantAdministration.permit(&subject, Action::UpdateTenant, &resource) {
-        Decision::Permit => {}
-        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
-    }
+    access.authorise(&TenantAdministration, &resource).await?;
 
     // No-op PATCH: echo the current state, do not emit an audit event.
     // Auditing a request that changed nothing would pollute the chain
@@ -201,28 +222,35 @@ pub async fn tenant_patch(
         (status = 204, description = "Tenant soft-deleted"),
         (status = 400, description = "deletion_reason missing or empty", body = ProblemDetails),
         (status = 401, description = "No authenticated subject", body = ProblemDetails),
-        (status = 403, description = "Subject is not a tenant-admin of this tenant", body = ProblemDetails),
-        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
+        (status = 403, description = "Caller can see the tenant but is not its tenant-admin", body = ProblemDetails),
+        (status = 404, description = "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's", body = ProblemDetails),
         (status = 500, description = "Internal error", body = ProblemDetails),
     ),
 )]
 pub async fn tenant_delete(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
     Json(req): Json<TenantDeleteRequest>,
 ) -> Result<Response, ApiError> {
-    let tenant = resolve_tenant(&db, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::DeleteTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
-        owner: None,
-        attributes: ResourceAttributes,
     };
-    match TenantAdministration.permit(&subject, Action::DeleteTenant, &resource) {
-        Decision::Permit => {}
-        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
-    }
+    access.authorise(&TenantAdministration, &resource).await?;
 
     let reason = req.deletion_reason.trim();
     if reason.is_empty() {

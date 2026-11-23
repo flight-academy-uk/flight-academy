@@ -33,7 +33,9 @@ derive_more = { workspace = true, features = ["from"] }
 flight-academy-auth = { workspace = true }
 flight-academy-core = { workspace = true, features = ["openapi"] }
 flight-academy-db = { workspace = true }
+hmac = { workspace = true }
 maud = { workspace = true, features = ["axum"] }
+rand_core = { workspace = true, features = ["std"] }
 # rust-embed bakes `apps/api/static/` into the binary under
 # `--features embedded-static` per ADR-020 §O (self-host single-binary
 # distribution variant). `debug-embed` forces compile-time embedding under
@@ -45,6 +47,7 @@ maud = { workspace = true, features = ["axum"] }
 rust-embed = { workspace = true, optional = true, features = ["debug-embed", "mime-guess"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 tower = { workspace = true }
 tower-http = { workspace = true, features = ["fs", "request-id", "set-header", "timeout", "trace"] }
@@ -53,6 +56,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 utoipa = { workspace = true, features = ["axum_extras"] }
 utoipa-axum = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v7"] }
+zeroize = { workspace = true }
 
 [dev-dependencies]
 sqlx = { workspace = true }

@@ -16,7 +16,7 @@
 
 use std::collections::BTreeSet;
 
-use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
+use flight_academy_auth::{ActorClass, Role, Subject};
 use flight_academy_core::{TenantId, UserId};
 use flight_academy_db::{Db, Tenant};
 use sqlx::PgPool;
@@ -124,10 +124,10 @@ pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> 
     .await
     .expect("seed tenant");
 
-    db.tenant_by_slug(slug)
+    db.visible_tenant_by_slug(slug, Some(id))
         .await
         .expect("read seeded tenant")
-        .expect("seeded tenant exists")
+        .expect("seeded tenant is visible to itself")
 }
 
 /// Build a Member-class `Subject` for tests. The richer slots
@@ -140,8 +140,6 @@ pub fn member_subject(tenant_id: TenantId) -> Subject {
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles: BTreeSet::new(),
-        attributes: SubjectAttributes,
-        elevation: None,
     }
 }
 
@@ -157,8 +155,6 @@ pub fn tenant_admin_subject(tenant_id: TenantId) -> Subject {
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles,
-        attributes: SubjectAttributes,
-        elevation: None,
     }
 }
 

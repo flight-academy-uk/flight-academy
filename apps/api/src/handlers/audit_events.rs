@@ -2,15 +2,17 @@
 //! product-API plane. Real audit browsing belongs in the staff plane
 //! (`apps/admin`, ADR-010 §I).
 
-use axum::{Extension, Json, extract::Path};
-use flight_academy_auth::{
-    Action, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Subject, TenantOwnership,
+use axum::{
+    Extension, Json,
+    extract::{MatchedPath, Path},
+    http::Method,
 };
-use flight_academy_core::Error;
+use flight_academy_auth::{Action, Resource, ResourceKind, Subject, TenantOwnership};
 use flight_academy_db::Db;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::deny::{AuditKey, DenyContext};
 use crate::error::{ApiError, ProblemDetails};
 use crate::handlers::tenants::resolve_tenant;
 
@@ -20,15 +22,13 @@ pub struct AuditEventCount {
 }
 
 /// Tenant-scoped audit-event count — the walking-skeleton round-trip that
-/// proves ABAC + RLS end to end. The slug → id lookup happens before
-/// policy evaluation (unknown slug → 404, mismatched tenant → 403);
-/// `Db::begin_tenant` opens a transaction with `SET LOCAL ROLE app_api`
-/// + the `app.current_tenant` GUC so the SELECT below is filtered by the
-/// RLS policy on `audit_events`.
+/// proves ABAC + RLS end to end. The slug resolves only to the caller's own
+/// tenant (any other slug is `404`), the policy then checks the caller is a
+/// member, and `Db::begin_tenant` runs the count as `app_api` with
+/// `app.current_tenant` set, so RLS on `audit_events` filters the rows.
 ///
 /// Real audit-event browsing belongs in the staff plane (`apps/admin`,
-/// ADR-010 §I); this counts rows for the WS#4 demonstration without
-/// exposing audit content.
+/// ADR-010 §I); this counts rows without exposing audit content.
 #[utoipa::path(
     get,
     path = "/api/v1/tenants/{tenant}/audit-events/count",
@@ -38,27 +38,34 @@ pub struct AuditEventCount {
     responses(
         (status = 200, description = "Audit-event count for the tenant", body = AuditEventCount),
         (status = 401, description = "No authenticated subject", body = ProblemDetails),
-        (status = 403, description = "Subject's tenant does not match path tenant", body = ProblemDetails),
-        (status = 404, description = "No live tenant with that slug", body = ProblemDetails),
+        (status = 403, description = "Caller is not a member; staff and system actors do not use the product API", body = ProblemDetails),
+        (status = 404, description = "No tenant with that slug is visible to the caller: unknown, deleted, or another tenant's", body = ProblemDetails),
         (status = 500, description = "Internal error", body = ProblemDetails),
     ),
 )]
 pub async fn audit_event_count(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
 ) -> Result<Json<AuditEventCount>, ApiError> {
-    let tenant = resolve_tenant(&db, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::ListAuditEvents,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::AuditEvent,
-        owner: None,
-        attributes: ResourceAttributes,
     };
-    match TenantOwnership.permit(&subject, Action::ListAuditEvents, &resource) {
-        Decision::Permit => {}
-        Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
-    }
+    access.authorise(&TenantOwnership, &resource).await?;
 
     let count = db.tenant_audit_event_count(tenant.id).await?;
 

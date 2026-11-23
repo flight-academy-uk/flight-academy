@@ -9,15 +9,27 @@ mod policy;
 mod resource;
 mod subject;
 
-pub use policy::{Decision, Policy, TenantAdministration, TenantOwnership};
-pub use resource::{Resource, ResourceAttributes, ResourceKind};
-pub use subject::{ActorClass, Elevation, Role, Subject, SubjectAttributes};
+pub use policy::{Decision, Denied, Policy, TenantAdministration, TenantOwnership, authorise};
+pub use resource::{Resource, ResourceKind};
+pub use subject::{ActorClass, Role, Subject, UnknownRole};
 
-/// Stub set. Grows as endpoints land.
+/// Grows as endpoints land.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Action {
     ListAuditEvents,
     ReadTenant,
     UpdateTenant,
     DeleteTenant,
+}
+
+impl Action {
+    /// Stable name for audit rows.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ListAuditEvents => "audit_events.count",
+            Self::ReadTenant => "tenant.read",
+            Self::UpdateTenant => "tenant.update",
+            Self::DeleteTenant => "tenant.delete",
+        }
+    }
 }

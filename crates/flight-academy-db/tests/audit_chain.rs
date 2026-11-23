@@ -3,8 +3,10 @@
 #![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_core::UserId;
+use flight_academy_db::Chain;
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn chain_links_across_three_writes() {
@@ -345,4 +347,54 @@ async fn concurrent_writes_on_one_chain_succeed_and_stay_linear() {
         Some(current.as_slice()),
         "the head points at the last row"
     );
+}
+
+/// A user chain has its own head and links like a tenant chain; its rows
+/// carry no tenant, so no tenant's RLS context shows them.
+#[tokio::test]
+async fn user_chain_appends_link_and_keep_their_own_head() {
+    let db = fresh_db().await;
+    let user = UserId::random();
+    let first = db
+        .write_audit_event(
+            Chain::User(user),
+            "member",
+            Some(user),
+            serde_json::json!({ "n": 1 }),
+        )
+        .await
+        .unwrap();
+    let second = db
+        .write_audit_event(
+            Chain::User(user),
+            "member",
+            Some(user),
+            serde_json::json!({ "n": 2 }),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.prev_hash, None);
+    assert_eq!(
+        second.prev_hash.as_deref(),
+        Some(first.payload_hash.as_slice())
+    );
+
+    let (tenant_ids, seq): (Vec<Option<Uuid>>, i64) = (
+        sqlx::query_scalar(
+            "SELECT tenant_id FROM audit_events WHERE chain_kind = 'user' AND chain_id = $1",
+        )
+        .bind(user)
+        .fetch_all(db.pool())
+        .await
+        .unwrap(),
+        sqlx::query_scalar(
+            "SELECT seq FROM audit_chain_heads WHERE chain_kind = 'user' AND chain_id = $1",
+        )
+        .bind(user)
+        .fetch_one(db.pool())
+        .await
+        .unwrap(),
+    );
+    assert_eq!(tenant_ids, vec![None, None]);
+    assert_eq!(seq, 2);
 }
