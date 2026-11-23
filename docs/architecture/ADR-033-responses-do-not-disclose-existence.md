@@ -4,6 +4,7 @@
 | --- | --- |
 | **Status** | Accepted |
 | **Date** | 2026-11-23 |
+| **Amended** | 2026-11-23 - §C records the caller's key as a keyed hash, not as sent |
 | **Deciders** | @ICreateThunder |
 | **Tags** | security, api, authorisation, privacy |
 | **Supersedes** | (none - refines the `403` for a tenant mismatch in [ADR-001 §F](ADR-001-platform.md) and [ADR-006 §C](ADR-006-api-contract.md)) |
@@ -43,7 +44,9 @@ RFC 9110 §15.5.4 allows the alternative directly:
 
 - A lookup with a visibility condition that returns no row is a Deny, and is audited as [ADR-009 §B](ADR-009-event-streams-and-retention.md) requires for every Deny. The row goes to the caller's chain: their tenant chain, or their user chain when there is no tenant context. It never goes to the target's chain, because the target may not exist and naming it would need the lookup this ADR hides.
 - The row is the same whether or not the target exists, so both cases do the same work before the response is sent. If recording is limited under load, the limit applies to both cases alike.
-- The row holds the subject, the route, the key as the caller sent it (the public ID or slug in the request, never a resolved internal ID), and the fixed reason `not_visible_or_absent`. The reason is set before the lookup and never filled in from its result. A key that is not a well-formed identifier or slug is recorded only as malformed, so text a caller types into a path does not reach the audit chain ([ADR-004 §B](ADR-004-defence-in-depth.md), [§D](ADR-004-defence-in-depth.md)).
+- The row holds the subject, the route, the key the caller sent (the public ID or slug in the request, never a resolved internal ID) and the fixed reason `not_visible_or_absent`. The reason is set before the lookup and never filled in from its result. A key that is not a well-formed identifier or slug is recorded only as malformed, so text a caller types into a path does not reach the audit chain ([ADR-004 §B](ADR-004-defence-in-depth.md), [§D](ADR-004-defence-in-depth.md)).
+- The key is recorded as HMAC-SHA-256 under an operator-held audit key, with a domain label per kind of key (for example, tenant slug), never as the text sent. Slugs are chosen by people and can carry a name, and audit rows cannot be erased, so the text itself is not kept. Matching a row to a slug, when investigating a request by its ID, needs the audit key: the operator hashes the candidate slug and compares.
+- The audit key is kept for as long as the audit rows it hashed, and is not rotated without a plan to keep the old key for the rows it covers. A lost or replaced key leaves those rows unmatchable. The server refuses to start without a key file, and test or document-generation settings that use a random key are kept apart from the production configuration.
 - Nothing on the response path works out which case it was. Telling "exists but not visible" from "does not exist" is optional, and happens only afterwards, for example when an operator investigates a request by its ID.
 - A policy Deny on a visible resource (`403`) is recorded on the caller's chain in the same way.
 
@@ -61,6 +64,7 @@ RFC 9110 §15.5.4 allows the alternative directly:
 - Every not-found lookup with a visibility condition writes an audit row, so those responses include a chain append. The reasoning in ADR-009 §B that Denies are small in volume no longer holds for these: a caller probing slugs or IDs drives appends on their own tenant's chain, which queue behind each other and slow other writers in that tenant, though not other tenants. Per-credential rate limiting of not-found responses, applied to both cases alike, is the expected mitigation.
 - Client developers lose a signal: a `404` may mean "ask for access" as well as "does not exist". Documentation for each route has to say so.
 - Every lookup must take the caller's context. A query helper that loads by key alone cannot be used on a request path.
+- The audit key becomes something to keep safe and keep: anyone with it can test guesses against recorded slugs, and without it recorded slugs cannot be matched at all.
 
 ### Neutral
 
