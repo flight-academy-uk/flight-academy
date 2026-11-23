@@ -77,7 +77,7 @@ async fn oversized_body_is_rejected_with_413() {
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let config = flight_academy_api::AppConfig {
         body_limit: 1024,
-        ..flight_academy_api::AppConfig::default()
+        ..flight_academy_api::AppConfig::ephemeral()
     };
     let app = flight_academy_api::app_for_test_with(&config).layer(Extension(db));
 
@@ -117,7 +117,7 @@ async fn request_timeout_is_problem_json_408() {
     let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
     let config = flight_academy_api::AppConfig {
         request_timeout: std::time::Duration::from_millis(100),
-        ..flight_academy_api::AppConfig::default()
+        ..flight_academy_api::AppConfig::ephemeral()
     };
     let app = flight_academy_api::app_for_test_with(&config).layer(Extension(db));
     // A body that never arrives: the JSON extractor waits on it until the

@@ -500,7 +500,7 @@ fn app_with_known_key(db: &flight_academy_db::Db) -> (axum::Router, AuditKey) {
     let key = AuditKey::from_bytes(vec![7; 32]).unwrap();
     let config = AppConfig {
         audit_key: key.clone(),
-        ..AppConfig::default()
+        ..AppConfig::ephemeral()
     };
     let app = flight_academy_api::app_for_test_with(&config).layer(Extension(db.clone()));
     (app, key)

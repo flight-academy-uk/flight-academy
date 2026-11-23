@@ -22,6 +22,13 @@ pub enum Error {
     Config {
         reason: &'static str,
     },
+    /// The audit key file could not be read; carries the path so a typo
+    /// in `FA_AUDIT_KEY_FILE` names itself.
+    #[from(skip)]
+    KeyFile {
+        path: std::path::PathBuf,
+        source: std::io::Error,
+    },
 }
 
 impl core::fmt::Display for Error {

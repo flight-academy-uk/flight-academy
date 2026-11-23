@@ -286,11 +286,39 @@ fn init_tracing() {
         .init();
 }
 
-/// Read the audit key file, refusing one shorter than the minimum.
+/// Read the audit key file, refusing one shorter than the minimum. A file
+/// others can read is allowed but warned about: the key is what keeps the
+/// slug hashes in Deny rows from being reversed.
 fn read_audit_key(path: &std::path::Path) -> Result<flight_academy_api::AuditKey> {
-    flight_academy_api::AuditKey::from_bytes(std::fs::read(path)?).ok_or(Error::Config {
+    let key_file = |source| Error::KeyFile {
+        path: path.to_owned(),
+        source,
+    };
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(path)
+            .map_err(key_file)?
+            .permissions()
+            .mode();
+        if readable_by_others(mode) {
+            tracing::warn!(
+                path = %path.display(),
+                mode = format!("{:o}", mode & 0o777),
+                "FA_AUDIT_KEY_FILE is readable by group or others; restrict it to the server's user (chmod 600)"
+            );
+        }
+    }
+    let bytes = std::fs::read(path).map_err(key_file)?;
+    flight_academy_api::AuditKey::from_bytes(bytes).ok_or(Error::Config {
         reason: "FA_AUDIT_KEY_FILE holds fewer than 32 bytes",
     })
+}
+
+/// Whether a Unix file mode lets the group or others read or write.
+#[cfg(unix)]
+fn readable_by_others(mode: u32) -> bool {
+    mode & 0o077 != 0
 }
 
 #[cfg(test)]
@@ -344,5 +372,22 @@ mod tests {
         assert!(Cli::try_parse_from(["flight-academy", "serve"]).is_err());
         assert!(Cli::try_parse_from(["flight-academy", "migrate"]).is_err());
         assert!(Cli::try_parse_from(["flight-academy", "emit-spec"]).is_ok());
+    }
+
+    #[test]
+    fn a_missing_key_file_names_its_path() {
+        let path = std::path::Path::new("/nonexistent/flight-academy-audit.key");
+        let err = read_audit_key(path).expect_err("no such file");
+        assert!(matches!(&err, Error::KeyFile { path: p, .. } if p == path));
+        assert!(err.to_string().contains("flight-academy-audit.key"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn only_owner_only_modes_pass_quietly() {
+        assert!(!readable_by_others(0o100_600));
+        assert!(!readable_by_others(0o100_400));
+        assert!(readable_by_others(0o100_640));
+        assert!(readable_by_others(0o100_604));
     }
 }

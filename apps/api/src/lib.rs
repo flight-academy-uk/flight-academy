@@ -64,8 +64,12 @@ pub struct AppConfig {
     pub audit_key: AuditKey,
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
+impl AppConfig {
+    /// Settings with a random audit key that is never saved, for tests and
+    /// for emitting the OpenAPI document. Not `Default`, so a production
+    /// path cannot reach it by accident: a server running on this key
+    /// writes Deny hashes that can never be matched to a slug afterwards.
+    pub fn ephemeral() -> Self {
         Self {
             request_timeout: Duration::from_secs(30),
             body_limit: 256 * 1024,
@@ -226,7 +230,7 @@ pub fn app(config: &AppConfig) -> axum::Router {
 /// present in request extensions but the test attaches it directly per
 /// request rather than reading env vars.
 pub fn app_for_test() -> axum::Router {
-    build(&AppConfig::default(), false).router
+    build(&AppConfig::ephemeral(), false).router
 }
 
 /// [`app_for_test`] with explicit settings, for tests of the limits.
@@ -238,5 +242,5 @@ pub fn app_for_test_with(config: &AppConfig) -> axum::Router {
 /// (and any tooling that wants to compare the live contract against the
 /// committed `docs/api/openapi.json` — ADR-006 §A; format per ADR-018).
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    build(&AppConfig::default(), true).openapi
+    build(&AppConfig::ephemeral(), true).openapi
 }
