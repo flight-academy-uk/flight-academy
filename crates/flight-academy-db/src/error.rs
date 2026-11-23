@@ -11,11 +11,6 @@ pub type Result<T> = core::result::Result<T, Error>;
 pub enum Error {
     Sqlx(sqlx::Error),
     Migrate(sqlx::migrate::MigrateError),
-    /// The pool's session role does not meet the audit chain writer's
-    /// invariant (see `audit::verify_pool_role`). Each field names one
-    /// capability the writer needs. Every deficit would surface as an
-    /// error at the first audited write; pre-flighting them at startup
-    /// turns first-traffic failures into refuse-to-start.
     /// The PostgreSQL server is older than the oldest supported version.
     /// Both values are in `server_version_num` form (180000 is 18.0).
     #[from(skip)]
@@ -23,6 +18,11 @@ pub enum Error {
         found: i32,
         minimum: i32,
     },
+    /// The pool's session role does not meet the audit chain writer's
+    /// invariant (see `audit::verify_pool_role`). Each field names one
+    /// capability the writer needs. Every deficit would surface as an
+    /// error at the first audited write; pre-flighting them at startup
+    /// turns first-traffic failures into refuse-to-start.
     #[from(skip)]
     AuditPoolRoleUnfit {
         role: String,

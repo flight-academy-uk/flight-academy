@@ -96,7 +96,7 @@ impl Db {
     ///
     /// # Pool-role invariant
     ///
-    /// The transaction comes from [`Db::begin_audited`], which begins it on
+    /// The transaction comes from `Db::begin_audited`, which begins it on
     /// the pool's session role directly, **not** through `begin_tenant`.
     /// Two reasons:
     ///
@@ -111,7 +111,7 @@ impl Db {
     /// INSERT and SELECT policy for the audit chain writer must be added
     /// first. The same holds for every caller of
     /// [`write_tenant_audit_event_in_tx`]: [`Db::update_tenant`] and
-    /// [`Db::soft_delete_tenant`] run it inside [`Db::begin_audited`] for
+    /// [`Db::soft_delete_tenant`] run it inside `Db::begin_audited` for
     /// this reason.
     pub async fn write_tenant_audit_event(
         &self,
@@ -139,7 +139,7 @@ impl Db {
 ///
 /// # Caller responsibilities
 ///
-/// * Open the transaction at READ COMMITTED, as [`Db::begin_audited`]
+/// * Open the transaction at READ COMMITTED, as `Db::begin_audited`
 ///   does. Under REPEATABLE READ or SERIALIZABLE, a writer that waited for
 ///   the chain head would fail with a serialization error when the holder
 ///   commits.

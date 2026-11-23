@@ -45,8 +45,9 @@ pub fn migrator() -> sqlx::migrate::Migrator {
 }
 
 /// Connection pool handle. Constructed via [`Db::connect`], drives
-/// migrations via [`Db::migrate`], and exposes the underlying [`PgPool`]
-/// for query helpers in downstream crates via [`Db::pool`].
+/// migrations via [`Db::migrate`], and runs every query the application
+/// issues as one of its methods. The raw pool is reachable only by tests,
+/// through `Db::pool` under the `test-util` feature.
 #[derive(Clone, Debug)]
 pub struct Db {
     pool: PgPool,
