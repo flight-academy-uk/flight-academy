@@ -43,6 +43,7 @@ RFC 9110 §15.5.4 allows the alternative directly:
 
 - A lookup with a visibility condition that returns no row is a Deny, and is audited as [ADR-009 §B](ADR-009-event-streams-and-retention.md) requires for every Deny. The row goes to the caller's chain: their tenant chain, or their user chain when there is no tenant context. It never goes to the target's chain, because the target may not exist and naming it would need the lookup this ADR hides.
 - The row is the same whether or not the target exists, so both cases do the same work before the response is sent. If recording is limited under load, the limit applies to both cases alike.
+- The row holds the subject, the route, the key as the caller sent it (the public ID or slug in the request, never a resolved internal ID), and the fixed reason `not_visible_or_absent`. The reason is set before the lookup and never filled in from its result. A key that is not a well-formed identifier or slug is recorded only as malformed, so text a caller types into a path does not reach the audit chain ([ADR-004 §B](ADR-004-defence-in-depth.md), [§D](ADR-004-defence-in-depth.md)).
 - Nothing on the response path works out which case it was. Telling "exists but not visible" from "does not exist" is optional, and happens only afterwards, for example when an operator investigates a request by its ID.
 - A policy Deny on a visible resource (`403`) is recorded on the caller's chain in the same way.
 
@@ -57,7 +58,7 @@ RFC 9110 §15.5.4 allows the alternative directly:
 ### Negative
 
 - A caller who mistypes a slug and a caller asking for a tenant they do not belong to get the same answer. Telling them apart takes an investigation by request ID.
-- Every not-found lookup with a visibility condition writes an audit row, so those responses include a chain append.
+- Every not-found lookup with a visibility condition writes an audit row, so those responses include a chain append. The reasoning in ADR-009 §B that Denies are small in volume no longer holds for these: a caller probing slugs or IDs drives appends on their own tenant's chain, which queue behind each other and slow other writers in that tenant, though not other tenants. Per-credential rate limiting of not-found responses, applied to both cases alike, is the expected mitigation.
 - Client developers lose a signal: a `404` may mean "ask for access" as well as "does not exist". Documentation for each route has to say so.
 - Every lookup must take the caller's context. A query helper that loads by key alone cannot be used on a request path.
 
