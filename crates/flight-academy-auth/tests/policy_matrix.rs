@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 
 use flight_academy_auth::{
-    Action, ActorClass, Decision, Policy, Resource, ResourceKind, Role, Subject,
+    Action, ActorClass, Decision, Denied, Policy, Resource, ResourceKind, Role, Subject,
     TenantAdministration, TenantOwnership, UnknownRole, authorise,
 };
 use flight_academy_core::{Error, TenantId, UserId};
@@ -132,7 +132,7 @@ fn tenant_ownership_denies_staff_and_system_even_in_the_tenant() {
 }
 
 #[test]
-fn authorise_maps_permit_to_ok_and_deny_to_forbidden() {
+fn authorise_maps_permit_to_ok_and_deny_to_denied() {
     let t = TenantId::random();
     assert!(
         authorise(
@@ -149,7 +149,13 @@ fn authorise_maps_permit_to_ok_and_deny_to_forbidden() {
         Action::UpdateTenant,
         &resource(t),
     );
-    assert!(matches!(denied, Err(Error::Forbidden)));
+    assert_eq!(
+        denied,
+        Err(Denied {
+            reason: "subject is not a tenant-admin"
+        })
+    );
+    assert!(matches!(Error::from(denied.unwrap_err()), Error::Forbidden));
 }
 
 #[test]

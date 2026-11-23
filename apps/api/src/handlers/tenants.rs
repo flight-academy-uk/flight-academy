@@ -4,12 +4,12 @@
 
 use axum::{
     Extension, Json,
-    extract::Path,
-    http::StatusCode,
+    extract::{MatchedPath, Path},
+    http::{Method, StatusCode},
     response::{IntoResponse, Response},
 };
 use flight_academy_auth::{
-    Action, Resource, ResourceKind, Subject, TenantAdministration, TenantOwnership, authorise,
+    Action, Resource, ResourceKind, Subject, TenantAdministration, TenantOwnership,
 };
 use flight_academy_core::Error;
 use flight_academy_core::TenantId;
@@ -17,6 +17,7 @@ use flight_academy_db::{Db, Tenant};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
+use crate::deny::{AuditKey, DenyContext};
 use crate::error::{ApiError, ProblemDetails};
 
 /// Public read shape for a tenant. Mirrors `flight_academy_db::Tenant`
@@ -43,15 +44,21 @@ impl From<Tenant> for TenantResponse {
     }
 }
 
-/// Resolve a path slug to a tenant the subject can see, or `404`. A
-/// tenant that exists but belongs to someone else is also `404`, with the
-/// same body: the lookup applies visibility in the query, so the response
-/// says nothing about whether the slug is taken (ADR-033). Every
-/// slug-keyed handler goes through here so none can diverge.
-pub async fn resolve_tenant(db: &Db, subject: &Subject, slug: &str) -> Result<Tenant, ApiError> {
-    db.visible_tenant_by_slug(slug, subject.tenant_id)
+/// Resolve the path slug to a tenant the caller can see, or record the
+/// Deny and return `404`. A tenant that exists but belongs to someone else
+/// is the same `404` with the same body, after the same work: visibility
+/// is part of the lookup query and the recorded row does not depend on
+/// which case it was (ADR-033). Every slug-keyed handler goes through here
+/// so none can diverge.
+pub async fn resolve_tenant(access: &DenyContext<'_>) -> Result<Tenant, ApiError> {
+    match access
+        .db
+        .visible_tenant_by_slug(access.requested_tenant, access.subject.tenant_id)
         .await?
-        .ok_or_else(|| Error::NotFound { resource: "tenant" }.into())
+    {
+        Some(tenant) => Ok(tenant),
+        None => Err(access.not_found("tenant").await),
+    }
 }
 
 /// GET a tenant by slug. Returns the public read shape of the caller's
@@ -73,14 +80,26 @@ pub async fn resolve_tenant(db: &Db, subject: &Subject, slug: &str) -> Result<Te
 pub async fn tenant_get(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
 ) -> Result<Json<TenantResponse>, ApiError> {
-    let tenant = resolve_tenant(&db, &subject, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::ReadTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
     };
-    authorise(&TenantOwnership, &subject, Action::ReadTenant, &resource)?;
+    access.authorise(&TenantOwnership, &resource).await?;
     Ok(Json(tenant.into()))
 }
 
@@ -132,20 +151,27 @@ pub struct TenantDeleteRequest {
 pub async fn tenant_patch(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
     Json(req): Json<TenantPatchRequest>,
 ) -> Result<Json<TenantResponse>, ApiError> {
-    let tenant = resolve_tenant(&db, &subject, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::UpdateTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
     };
-    authorise(
-        &TenantAdministration,
-        &subject,
-        Action::UpdateTenant,
-        &resource,
-    )?;
+    access.authorise(&TenantAdministration, &resource).await?;
 
     // No-op PATCH: echo the current state, do not emit an audit event.
     // Auditing a request that changed nothing would pollute the chain
@@ -204,20 +230,27 @@ pub async fn tenant_patch(
 pub async fn tenant_delete(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
     Json(req): Json<TenantDeleteRequest>,
 ) -> Result<Response, ApiError> {
-    let tenant = resolve_tenant(&db, &subject, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::DeleteTenant,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::Tenant,
     };
-    authorise(
-        &TenantAdministration,
-        &subject,
-        Action::DeleteTenant,
-        &resource,
-    )?;
+    access.authorise(&TenantAdministration, &resource).await?;
 
     let reason = req.deletion_reason.trim();
     if reason.is_empty() {

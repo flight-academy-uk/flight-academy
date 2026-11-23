@@ -85,6 +85,12 @@ struct ServeArgs {
     #[arg(long, env = "FA_DB_STATEMENT_TIMEOUT_SECS", default_value_t = 15)]
     db_statement_timeout_secs: u64,
 
+    /// File holding the secret for keyed hashes in audit rows: at least 32
+    /// random bytes, for example from `head -c 32 /dev/urandom`. Keep it
+    /// stable across restarts so recorded hashes stay comparable.
+    #[arg(long, env = "FA_AUDIT_KEY_FILE")]
+    audit_key_file: std::path::PathBuf,
+
     #[command(flatten)]
     dev_auth: DevAuthArgs,
 }
@@ -185,6 +191,7 @@ async fn serve(args: ServeArgs) -> Result<()> {
         request_timeout: Duration::from_secs(args.request_timeout_secs),
         body_limit: args.body_limit_bytes,
         dev_subject: args.dev_auth.subject()?,
+        audit_key: read_audit_key(&args.audit_key_file)?,
     };
     if app_config.dev_subject.is_some() {
         tracing::warn!("development authentication is enabled; never use this in production");
@@ -277,6 +284,13 @@ fn init_tracing() {
         .with_current_span(true)
         .with_span_list(false)
         .init();
+}
+
+/// Read the audit key file, refusing one shorter than the minimum.
+fn read_audit_key(path: &std::path::Path) -> Result<flight_academy_api::AuditKey> {
+    flight_academy_api::AuditKey::from_bytes(std::fs::read(path)?).ok_or(Error::Config {
+        reason: "FA_AUDIT_KEY_FILE holds fewer than 32 bytes",
+    })
 }
 
 #[cfg(test)]

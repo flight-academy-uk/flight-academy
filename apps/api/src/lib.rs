@@ -11,12 +11,14 @@
 //! [`handlers`], one module per resource.
 
 pub mod assets;
+mod deny;
 #[cfg(feature = "embedded-static")]
 mod embedded;
 mod error;
 mod handlers;
 mod middleware;
 
+pub use deny::{AuditKey, MIN_AUDIT_KEY_LEN};
 pub use error::{ApiError, ProblemDetails};
 pub use handlers::audit_events::AuditEventCount;
 pub use handlers::health::HealthResponse;
@@ -58,6 +60,8 @@ pub struct AppConfig {
     pub body_limit: usize,
     /// Development-only subject injected on tenant routes; `None` -> 401.
     pub dev_subject: Option<Subject>,
+    /// Key for the keyed hashes in audited Denies.
+    pub audit_key: AuditKey,
 }
 
 impl Default for AppConfig {
@@ -66,6 +70,7 @@ impl Default for AppConfig {
             request_timeout: Duration::from_secs(30),
             body_limit: 256 * 1024,
             dev_subject: None,
+            audit_key: AuditKey::random(),
         }
     }
 }
@@ -89,7 +94,8 @@ fn build(config: &AppConfig, with_dev_auth: bool) -> Built {
             handlers::tenants::tenant_patch,
             handlers::tenants::tenant_delete
         ))
-        .routes(routes!(handlers::audit_events::audit_event_count));
+        .routes(routes!(handlers::audit_events::audit_event_count))
+        .route_layer(axum::Extension(config.audit_key.clone()));
     if with_dev_auth {
         tenant_routes = tenant_routes.route_layer(axum::middleware::from_fn_with_state(
             config.dev_subject.clone(),

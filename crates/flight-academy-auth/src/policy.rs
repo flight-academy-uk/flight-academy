@@ -21,19 +21,33 @@ pub trait Policy {
     fn permit(&self, subject: &Subject, action: Action, resource: &Resource) -> Decision;
 }
 
-/// Evaluate `policy` and turn a Deny into [`Error::Forbidden`]. The reason
-/// is logged at debug level for operators and never reaches the response.
+/// A policy refused the action. The HTTP layer records it and answers
+/// `403`; the reason goes to the audit row and debug log, never to the
+/// response.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Denied {
+    pub reason: &'static str,
+}
+
+impl From<Denied> for Error {
+    fn from(_: Denied) -> Self {
+        Error::Forbidden
+    }
+}
+
+/// Evaluate `policy`, turning a Deny into [`Denied`] and logging its
+/// reason at debug level.
 pub fn authorise(
     policy: &impl Policy,
     subject: &Subject,
     action: Action,
     resource: &Resource,
-) -> Result<(), Error> {
+) -> Result<(), Denied> {
     match policy.permit(subject, action, resource) {
         Decision::Permit => Ok(()),
         Decision::Deny { reason } => {
             tracing::debug!(?action, kind = ?resource.kind, reason, "policy denied");
-            Err(Error::Forbidden)
+            Err(Denied { reason })
         }
     }
 }

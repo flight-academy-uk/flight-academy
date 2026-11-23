@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO audit_chain_heads (chain_kind, chain_id)\n             VALUES ($1, $2)\n             ON CONFLICT (chain_kind, chain_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "09088b6e27c375265064adf8423b6032c56fd0334eb0b77fbf03de1deedb11fb"
+}

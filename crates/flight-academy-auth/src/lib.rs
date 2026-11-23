@@ -9,7 +9,7 @@ mod policy;
 mod resource;
 mod subject;
 
-pub use policy::{Decision, Policy, TenantAdministration, TenantOwnership, authorise};
+pub use policy::{Decision, Denied, Policy, TenantAdministration, TenantOwnership, authorise};
 pub use resource::{Resource, ResourceKind};
 pub use subject::{ActorClass, Role, Subject, UnknownRole};
 
@@ -20,4 +20,16 @@ pub enum Action {
     ReadTenant,
     UpdateTenant,
     DeleteTenant,
+}
+
+impl Action {
+    /// Stable name for audit rows.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ListAuditEvents => "audit_events.count",
+            Self::ReadTenant => "tenant.read",
+            Self::UpdateTenant => "tenant.update",
+            Self::DeleteTenant => "tenant.delete",
+        }
+    }
 }

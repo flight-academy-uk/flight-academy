@@ -12,7 +12,7 @@ mod dek_wrappings;
 mod error;
 mod tenants;
 
-pub use audit::AuditEvent;
+pub use audit::{AuditEvent, Chain};
 pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;

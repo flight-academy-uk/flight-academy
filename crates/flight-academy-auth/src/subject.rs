@@ -21,6 +21,17 @@ pub enum ActorClass {
     System,
 }
 
+impl ActorClass {
+    /// The `actor_class` value written to audit rows.
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Member => "member",
+            Self::Staff => "staff",
+            Self::System => "system",
+        }
+    }
+}
+
 /// Membership / staff role taxonomy. Grows as endpoints land. Today's
 /// set:
 ///

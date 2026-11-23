@@ -2,12 +2,17 @@
 //! product-API plane. Real audit browsing belongs in the staff plane
 //! (`apps/admin`, ADR-010 §I).
 
-use axum::{Extension, Json, extract::Path};
-use flight_academy_auth::{Action, Resource, ResourceKind, Subject, TenantOwnership, authorise};
+use axum::{
+    Extension, Json,
+    extract::{MatchedPath, Path},
+    http::Method,
+};
+use flight_academy_auth::{Action, Resource, ResourceKind, Subject, TenantOwnership};
 use flight_academy_db::Db;
 use serde::Serialize;
 use utoipa::ToSchema;
 
+use crate::deny::{AuditKey, DenyContext};
 use crate::error::{ApiError, ProblemDetails};
 use crate::handlers::tenants::resolve_tenant;
 
@@ -41,19 +46,26 @@ pub struct AuditEventCount {
 pub async fn audit_event_count(
     Extension(db): Extension<Db>,
     Extension(subject): Extension<Subject>,
+    Extension(audit_key): Extension<AuditKey>,
+    method: Method,
+    route: MatchedPath,
     Path(slug): Path<String>,
 ) -> Result<Json<AuditEventCount>, ApiError> {
-    let tenant = resolve_tenant(&db, &subject, &slug).await?;
+    let access = DenyContext {
+        db: &db,
+        key: &audit_key,
+        subject: &subject,
+        method: &method,
+        route: &route,
+        action: Action::ListAuditEvents,
+        requested_tenant: &slug,
+    };
+    let tenant = resolve_tenant(&access).await?;
     let resource = Resource {
         tenant_id: tenant.id,
         kind: ResourceKind::AuditEvent,
     };
-    authorise(
-        &TenantOwnership,
-        &subject,
-        Action::ListAuditEvents,
-        &resource,
-    )?;
+    access.authorise(&TenantOwnership, &resource).await?;
 
     let count = db.tenant_audit_event_count(tenant.id).await?;
 

@@ -14,6 +14,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
+use flight_academy_api::{AppConfig, AuditKey};
 use flight_academy_auth::ActorClass;
 use flight_academy_core::TenantId;
 use flight_academy_test_support::{
@@ -478,4 +479,123 @@ async fn healthz_needs_no_subject() {
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
+}
+
+/// Payloads on a tenant's chain, oldest first.
+async fn chain_payloads(db: &flight_academy_db::Db, tenant: TenantId) -> Vec<serde_json::Value> {
+    sqlx::query_scalar(
+        "SELECT payload FROM audit_events
+          WHERE chain_kind = 'tenant' AND chain_id = $1
+          ORDER BY occurred_at, id",
+    )
+    .bind(tenant)
+    .fetch_all(db.pool())
+    .await
+    .unwrap()
+}
+
+/// A router whose audit key is known, so tests can compute the hashes it
+/// records.
+fn app_with_known_key(db: &flight_academy_db::Db) -> (axum::Router, AuditKey) {
+    let key = AuditKey::from_bytes(vec![7; 32]).unwrap();
+    let config = AppConfig {
+        audit_key: key.clone(),
+        ..AppConfig::default()
+    };
+    let app = flight_academy_api::app_for_test_with(&config).layer(Extension(db.clone()));
+    (app, key)
+}
+
+/// A not-found lookup is a Deny recorded on the caller's chain (ADR-033
+/// §C). Another tenant's slug and an unknown slug write the same row apart
+/// from the keyed hash of the slug as sent, and nothing is written to the
+/// target's chain.
+#[tokio::test]
+async fn not_found_lookups_are_recorded_alike_on_the_callers_chain() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let bravo = seed_tenant(&db, "bravo-flight", "Bravo Flight", "part_145").await;
+    let (app, key) = app_with_known_key(&db);
+
+    for slug in ["bravo-flight", "no-such-tenant"] {
+        let mut req = Request::builder()
+            .uri(format!("/api/v1/tenants/{slug}"))
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut().insert(member_subject(alpha.id));
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    for (row, slug) in rows.iter().zip(["bravo-flight", "no-such-tenant"]) {
+        assert_eq!(
+            *row,
+            serde_json::json!({
+                "action": "deny",
+                "operation": "tenant.read",
+                "route": "GET /api/v1/tenants/{tenant}",
+                "requested": { "tenant_slug_hmac": key.mac_hex("tenant-slug", slug) },
+                "reason": "not_visible_or_absent",
+            })
+        );
+        assert!(!row.to_string().contains(slug), "slug text in {row}");
+    }
+    assert!(chain_payloads(&db, bravo.id).await.is_empty());
+}
+
+/// A policy Deny on a visible tenant is recorded with the policy's reason.
+#[tokio::test]
+async fn policy_denies_are_recorded_with_their_reason() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let (app, key) = app_with_known_key(&db);
+
+    let mut req = Request::builder()
+        .method("PATCH")
+        .uri("/api/v1/tenants/alpha-academy")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"name":"Renamed"}"#))
+        .unwrap();
+    req.extensions_mut().insert(member_subject(alpha.id));
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(
+        rows,
+        vec![serde_json::json!({
+            "action": "deny",
+            "operation": "tenant.update",
+            "route": "PATCH /api/v1/tenants/{tenant}",
+            "requested": { "tenant_slug_hmac": key.mac_hex("tenant-slug", "alpha-academy") },
+            "reason": "subject is not a tenant-admin",
+        })]
+    );
+}
+
+/// A path segment that is not a well-formed slug is recorded only as
+/// malformed, so free text a caller types does not reach the audit chain.
+#[tokio::test]
+async fn malformed_keys_are_not_copied_into_the_audit_chain() {
+    let db = fresh_db().await;
+    let alpha = seed_tenant(&db, "alpha-academy", "Alpha Academy", "ato").await;
+    let app = flight_academy_api::app_for_test().layer(Extension(db.clone()));
+
+    let mut req = Request::builder()
+        .uri("/api/v1/tenants/jane.doe@example.com")
+        .body(Body::empty())
+        .unwrap();
+    req.extensions_mut().insert(member_subject(alpha.id));
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+    let rows = chain_payloads(&db, alpha.id).await;
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0]["requested"],
+        serde_json::json!({ "malformed": true })
+    );
+    assert!(!rows[0].to_string().contains("jane"));
 }
