@@ -1,5 +1,6 @@
 //! Verifies the audit chain writer produces correctly-linked rows and
 //! that a tampered row is detected by re-deriving its hash.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;
@@ -255,5 +256,93 @@ fn serde_jcs_canonical_bytes_stable() {
         std::str::from_utf8(&bytes).unwrap(),
         expected,
         "serde_jcs canonical output drifted"
+    );
+}
+
+/// Concurrent writers on one chain queue on the chain's head row, so every
+/// write succeeds and the chain stays linear.
+///
+/// Linearity is checked by following the hash links rather than timestamp
+/// order: exactly one row starts the chain, no row has two successors, and
+/// every row is reachable from the first. The head must then point at the
+/// last row and count every row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_writes_on_one_chain_succeed_and_stay_linear() {
+    const WRITERS: usize = 16;
+    let db = fresh_db().await;
+    let tenant = seed_tenant(&db, "chain-concurrent", "Chain Concurrent", "ato").await;
+
+    let writes: Vec<_> = (0..WRITERS)
+        .map(|i| {
+            let db = db.clone();
+            let tenant_id = tenant.id;
+            tokio::spawn(async move {
+                db.write_tenant_audit_event(
+                    "member",
+                    Some(Uuid::new_v4()),
+                    tenant_id,
+                    serde_json::json!({ "writer": i }),
+                )
+                .await
+            })
+        })
+        .collect();
+    for write in writes {
+        write
+            .await
+            .expect("task joins")
+            .expect("every concurrent write succeeds");
+    }
+
+    let rows: Vec<(Vec<u8>, Option<Vec<u8>>)> = sqlx::query_as(
+        "SELECT payload_hash, prev_hash FROM audit_events
+          WHERE chain_kind = 'tenant' AND chain_id = $1",
+    )
+    .bind(tenant.id)
+    .fetch_all(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), WRITERS, "one row per write");
+
+    let starts: Vec<_> = rows.iter().filter(|(_, prev)| prev.is_none()).collect();
+    assert_eq!(starts.len(), 1, "exactly one row starts the chain");
+    let mut current = starts[0].0.clone();
+    let mut reached = 1;
+    loop {
+        let successors: Vec<_> = rows
+            .iter()
+            .filter(|(_, prev)| prev.as_deref() == Some(current.as_slice()))
+            .collect();
+        assert!(
+            successors.len() <= 1,
+            "fork: {} rows link to the same predecessor",
+            successors.len()
+        );
+        match successors.first() {
+            Some((hash, _)) => {
+                current = hash.clone();
+                reached += 1;
+            }
+            None => break,
+        }
+    }
+    assert_eq!(
+        reached, WRITERS,
+        "every row is reachable from the first by its links"
+    );
+
+    let (seq, tip_hash): (i64, Option<Vec<u8>>) = sqlx::query_as(
+        "SELECT seq, tip_hash FROM audit_chain_heads
+          WHERE chain_kind = 'tenant' AND chain_id = $1",
+    )
+    .bind(tenant.id)
+    .fetch_one(db.pool())
+    .await
+    .unwrap();
+    assert_eq!(seq, WRITERS as i64, "the head counts every row");
+    assert_eq!(
+        tip_hash.as_deref(),
+        Some(current.as_slice()),
+        "the head points at the last row"
     );
 }

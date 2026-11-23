@@ -3,6 +3,7 @@
 //! then drops to `app_api` via `Db::begin_tenant` and checks that
 //! per-tenant queries see only their own chain's rows and that
 //! user-chain rows are invisible to tenant-scoped queries.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_db::Db;
 use flight_academy_test_support::{fresh_db, seed_tenant_audit_events};

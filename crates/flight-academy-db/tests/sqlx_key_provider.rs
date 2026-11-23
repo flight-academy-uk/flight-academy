@@ -30,6 +30,7 @@
 //! - **State invariant**: `state = 'active'` implies `retired_at IS NULL`
 //!   and `state = 'retired'` implies `retired_at IS NOT NULL` — the
 //!   `tenant_dek_wrappings_state_consistency` CHECK rejects violations.
+#![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
 use flight_academy_db::SqlxKeyProvider;
 use flight_academy_store::{ControllerId, KeyProvider, MasterKek, StoreError};

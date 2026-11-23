@@ -1,0 +1,29 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE tenants\n            SET deleted_at      = now(),\n                deletion_reason = $1\n          WHERE id = $2\n            AND deleted_at IS NULL\n        RETURNING id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid",
+        "origin": {
+          "Table": {
+            "table": "tenants",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9546916cc19bf20a18bd0c7a61d0dc3efe3aca477f7e2ec10db2ee0a4643a6a4"
+}

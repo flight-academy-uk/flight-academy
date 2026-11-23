@@ -60,11 +60,7 @@ pub async fn audit_event_count(
         Decision::Deny { .. } | Decision::NotApplicable => return Err(Error::Forbidden.into()),
     }
 
-    let mut tx = db.begin_tenant(tenant.id).await?;
-    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM audit_events")
-        .fetch_one(tx.conn())
-        .await?;
-    tx.commit().await?;
+    let count = db.tenant_audit_event_count(tenant.id).await?;
 
     Ok(Json(AuditEventCount { count }))
 }

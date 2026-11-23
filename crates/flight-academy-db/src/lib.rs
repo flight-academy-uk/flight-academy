@@ -17,12 +17,24 @@ pub use dek_wrappings::SqlxKeyProvider;
 pub use error::{Error, Result};
 pub use tenants::Tenant;
 
+// `test-util` exposes `Db::pool()` to tests. Production code must never use
+// the raw pool, so an optimised build with the feature on does not compile.
+// CI enables it only for debug builds (clippy and tests use --all-features).
+#[cfg(all(feature = "test-util", not(debug_assertions)))]
+compile_error!("the `test-util` feature exposes Db::pool(); never enable it in a release build");
+
 use std::str::FromStr;
 use std::time::Duration;
 
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
 use uuid::Uuid;
+
+pub(crate) type Tx = Transaction<'static, Postgres>;
+
+/// Oldest supported PostgreSQL server, in `server_version_num` form. The
+/// tenant update uses `RETURNING old.*`, which PostgreSQL 18 introduced.
+const MIN_SERVER_VERSION_NUM: i32 = 180_000;
 
 /// Embedded migrator. Returned as a value so `flight-academy-test-support`
 /// can drive migrations against a fresh per-test database without needing
@@ -33,8 +45,9 @@ pub fn migrator() -> sqlx::migrate::Migrator {
 }
 
 /// Connection pool handle. Constructed via [`Db::connect`], drives
-/// migrations via [`Db::migrate`], and exposes the underlying [`PgPool`]
-/// for query helpers in downstream crates via [`Db::pool`].
+/// migrations via [`Db::migrate`], and runs every query the application
+/// issues as one of its methods. The raw pool is reachable only by tests,
+/// through `Db::pool` under the `test-util` feature.
 #[derive(Clone, Debug)]
 pub struct Db {
     pool: PgPool,
@@ -76,8 +89,32 @@ impl Db {
         Self { pool }
     }
 
+    /// The underlying pool, for tests that seed data or inspect the
+    /// catalogue directly. Not part of the production API: every query the
+    /// application runs is a method on `Db`.
+    #[cfg(feature = "test-util")]
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Begin a transaction for a write that appends to an audit chain.
+    ///
+    /// The isolation level is stated explicitly as READ COMMITTED rather
+    /// than left to the server's `default_transaction_isolation`: the audit
+    /// writer serialises appends by locking the chain's head row, and under
+    /// REPEATABLE READ or SERIALIZABLE a writer that waited on that lock
+    /// would fail with a serialization error once the holder commits,
+    /// instead of carrying on from the new tip. A wait on the lock counts
+    /// towards the pool's `statement_timeout`.
+    ///
+    /// The transaction runs on the pool's session role, not `begin_tenant`'s
+    /// `app_api`: audit chain writes need it (see the pool-role invariant on
+    /// [`Db::write_tenant_audit_event`]).
+    pub(crate) async fn begin_audited(&self) -> Result<Tx> {
+        Ok(self
+            .pool
+            .begin_with("BEGIN ISOLATION LEVEL READ COMMITTED")
+            .await?)
     }
 
     /// Apply all pending migrations from the embedded set
@@ -100,25 +137,34 @@ impl Db {
         audit::verify_pool_role(&mut conn).await
     }
 
+    /// Refuse a PostgreSQL server older than the oldest supported version,
+    /// so that an unsupported server stops the process at startup rather
+    /// than failing the first query that uses newer SQL.
+    pub async fn verify_server_version(&self) -> Result<()> {
+        let found = sqlx::query_scalar!(
+            r#"SELECT current_setting('server_version_num')::int AS "version!""#
+        )
+        .fetch_one(&self.pool)
+        .await?;
+        check_server_version(found)
+    }
+
     /// Begin a transaction with the active tenant context set.
     ///
-    /// Both `SET LOCAL ROLE app_api` and
-    /// `SET LOCAL app.current_tenant = '<uuid>'` are issued inside the
-    /// transaction so they reset at commit / rollback — safe with the
-    /// pooled connection. The role drop is what makes RLS actually apply
-    /// (the pool's session role is normally a superuser, which RLS would
-    /// otherwise bypass); the GUC is what
-    /// `audit_events_tenant_isolation` reads in its USING clause
-    /// (migration `20260605120000_audit_events_rls.sql`).
+    /// The role (`app_api`) and `app.current_tenant` are both set with
+    /// transaction-local `set_config`, in one statement, so they reset at
+    /// commit or rollback and cannot leak to the next user of the pooled
+    /// connection. The role is what makes RLS apply; the setting is what the
+    /// `audit_events_tenant_isolation` policy reads.
     pub async fn begin_tenant(&self, tenant_id: Uuid) -> Result<TenantTx> {
         let mut tx = self.pool.begin().await?;
-        sqlx::query("SET LOCAL ROLE app_api")
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("SELECT set_config('app.current_tenant', $1, true)")
-            .bind(tenant_id.to_string())
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query!(
+            "SELECT set_config('role', 'app_api', true) AS role,
+                    set_config('app.current_tenant', $1, true) AS tenant",
+            tenant_id.to_string()
+        )
+        .fetch_one(&mut *tx)
+        .await?;
         Ok(TenantTx { tx })
     }
 }
@@ -143,5 +189,34 @@ impl TenantTx {
     pub async fn rollback(self) -> Result<()> {
         self.tx.rollback().await?;
         Ok(())
+    }
+}
+
+fn check_server_version(found: i32) -> Result<()> {
+    if found < MIN_SERVER_VERSION_NUM {
+        return Err(Error::ServerVersionUnsupported {
+            found,
+            minimum: MIN_SERVER_VERSION_NUM,
+        });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn server_version_floor_is_postgresql_18() {
+        assert!(check_server_version(180_000).is_ok());
+        assert!(check_server_version(180_006).is_ok());
+        assert!(check_server_version(190_000).is_ok());
+        assert!(matches!(
+            check_server_version(170_005),
+            Err(Error::ServerVersionUnsupported {
+                found: 170_005,
+                minimum: 180_000
+            })
+        ));
     }
 }

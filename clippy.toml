@@ -1,0 +1,14 @@
+# Every production query is a compile-time-checked sqlx macro (query!,
+# query_as!, query_scalar!), so a query always matches the schema and is
+# always a string literal. The runtime functions are banned; test code that
+# must build SQL at run time (catalogue queries, per-test databases) allows
+# them at file level with a stated reason.
+disallowed-methods = [
+    { path = "sqlx::query", reason = "use sqlx::query! so the query is checked at compile time" },
+    { path = "sqlx::query_as", reason = "use sqlx::query_as! so the query is checked at compile time" },
+    { path = "sqlx::query_scalar", reason = "use sqlx::query_scalar! so the query is checked at compile time" },
+    { path = "sqlx::query_with", reason = "use a sqlx query macro so the query is checked at compile time" },
+    { path = "sqlx::query_as_with", reason = "use a sqlx query macro so the query is checked at compile time" },
+    { path = "sqlx::query_scalar_with", reason = "use a sqlx query macro so the query is checked at compile time" },
+    { path = "sqlx::raw_sql", reason = "use a sqlx query macro so the query is checked at compile time" },
+]

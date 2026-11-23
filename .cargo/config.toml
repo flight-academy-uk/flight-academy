@@ -1,0 +1,7 @@
+[env]
+# sqlx's query macros check every query at compile time. Build from the
+# committed .sqlx/ cache, never from whatever database DATABASE_URL points
+# at, so every build checks against the same schema. After changing a
+# query, regenerate the cache with `cargo sqlx prepare --workspace` against
+# a migrated database (see CONTRIBUTING.md).
+SQLX_OFFLINE = "true"

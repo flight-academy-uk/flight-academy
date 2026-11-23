@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE audit_chain_heads\n            SET seq              = seq + 1,\n                tip_hash         = $2,\n                last_occurred_at = $3\n          WHERE chain_kind = 'tenant' AND chain_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Bytea",
+        "Timestamptz"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "23f29a10e4918dae85a5bd4a7ce54e112752195c4e3bdbd2f6b5ff553d7ca331"
+}

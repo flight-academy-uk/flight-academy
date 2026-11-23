@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT tip_hash FROM audit_chain_heads\n              WHERE chain_kind = 'tenant' AND chain_id = $1\n                FOR UPDATE",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "tip_hash",
+        "type_info": "Bytea",
+        "origin": {
+          "Table": {
+            "table": "audit_chain_heads",
+            "name": "tip_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "89832f15025ded8386206b4721fce29aec981374d0d2d9730479ec7bf604a9db"
+}

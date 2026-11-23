@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT\n             current_user::text AS \"role!\",\n             has_table_privilege(current_user, 'audit_events', 'INSERT') AS \"can_insert!\",\n             has_table_privilege(current_user, 'audit_events', 'SELECT') AS \"can_select!\",\n             has_table_privilege(current_user, 'audit_chain_heads', 'SELECT, INSERT, UPDATE')\n                 AS \"can_write_heads!\",\n             COALESCE(\n                 (SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user),\n                 false\n             ) AS \"bypasses_rls!\"",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "role!",
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 1,
+        "name": "can_insert!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 2,
+        "name": "can_select!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 3,
+        "name": "can_write_heads!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      },
+      {
+        "ordinal": 4,
+        "name": "bypasses_rls!",
+        "type_info": "Bool",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null,
+      null,
+      null,
+      null,
+      null
+    ]
+  },
+  "hash": "13a46c4146f360ced256773926bb3f95dfded2f5b04f09ee3e17efa8f35acdd0"
+}

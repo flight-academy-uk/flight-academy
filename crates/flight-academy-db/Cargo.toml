@@ -21,6 +21,10 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 zeroize = { workspace = true }
 
+[features]
+# Exposes `Db::pool()` for tests that seed data or inspect the catalogue.
+test-util = []
+
 [dev-dependencies]
 flight-academy-test-support = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

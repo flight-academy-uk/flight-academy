@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM tenant_dek_wrappings\n              WHERE tenant_id = $1 AND record_kind = $2 AND dek_version = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Text",
+        "Int4"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "eb991b37add2b9997ba6b49dd6e8fb1a639e42b654dbb0ffe85544ca024ad54f"
+}

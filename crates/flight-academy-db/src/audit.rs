@@ -13,9 +13,9 @@
 //!   `id` and `payload_hash` are deliberately excluded from the canonical
 //!   input — `id` is `gen_random_uuid` (not chain-meaningful) and
 //!   `payload_hash` is the output of the hash, not an input to it.
-//! * `prev_hash` is the `payload_hash` of the most recent row in the same
-//!   `(chain_kind, chain_id)` chain, ordered by `(occurred_at, id)`. `NULL`
-//!   for the first row in a chain. When `NULL`, the second hasher update
+//! * `prev_hash` is the `payload_hash` of the previous row appended to the
+//!   same `(chain_kind, chain_id)` chain, as recorded in the chain's
+//!   `audit_chain_heads` row. `NULL` for the first row in a chain. When `NULL`, the second hasher update
 //!   is a no-op — the canonical input alone determines the first hash.
 //!
 //! ## Hash agility
@@ -29,13 +29,19 @@
 //!
 //! ## Concurrency
 //!
-//! Two concurrent writers on the same chain would otherwise race on the
-//! `prev_hash` lookup and create a fork (both reading the same prior tip,
-//! both writing as if they were the next link). The writer runs at
-//! `SERIALIZABLE` isolation and retries up to [`MAX_SERIALIZATION_RETRIES`]
-//! times on SQLSTATE `40001` (`serialization_failure`). At our audit
-//! volumes the retry rate should be near-zero except during bursts; cost
-//! per retry is one round-trip plus the hash compute.
+//! Each chain has one `audit_chain_heads` row holding its tip. An append
+//! locks that row (`SELECT ... FOR UPDATE`) at READ COMMITTED, so
+//! concurrent appends to one chain queue and each one links to the row the
+//! previous lock holder committed. None fails for contention, and the chain
+//! cannot fork. Appends to different chains do not wait for each other.
+//!
+//! `occurred_at` is `clock_timestamp()` read while the head is locked, so
+//! within a chain it increases in append order unless the database clock
+//! steps backwards. It is not used to find the tip.
+//!
+//! Every audited write locks its domain rows first and the chain head
+//! last, which keeps the lock order fixed and the head held only for the
+//! append itself.
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -43,17 +49,6 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{Db, Error, Result};
-
-/// Cap on retries when SERIALIZABLE detects a write conflict. Three is
-/// generous — the chain-write path is short (one SELECT, one INSERT) and
-/// the conflict resolves the moment one writer commits. Higher values
-/// would only delay an underlying contention problem.
-const MAX_SERIALIZATION_RETRIES: usize = 3;
-
-/// PostgreSQL SQLSTATE for `serialization_failure`. Returned when a
-/// SERIALIZABLE transaction cannot commit without violating serial
-/// equivalence with concurrent transactions.
-const SQLSTATE_SERIALIZATION_FAILURE: &str = "40001";
 
 /// What gets fed into `serde_jcs::to_vec` to produce the canonical bytes
 /// the hash covers. Field order is the struct's declaration order, but
@@ -98,6 +93,26 @@ impl Db {
     /// `flight-academy-core` so this crate can depend on it without a
     /// dependency cycle. Tracked for a follow-up PR; the DB CHECK is
     /// the load-bearing defence until then.
+    ///
+    /// # Pool-role invariant
+    ///
+    /// The transaction comes from `Db::begin_audited`, which begins it on
+    /// the pool's session role directly, **not** through `begin_tenant`.
+    /// Two reasons:
+    ///
+    /// 1. `audit_chain_heads` has row-level security enabled and no policy,
+    ///    so only a role that bypasses RLS can read or advance a head.
+    /// 2. There is no INSERT policy on `audit_events` for `app_api` today,
+    ///    so an INSERT under that role would be denied.
+    ///
+    /// The audit writer therefore **requires** the pool's session role to
+    /// bypass RLS (checked at startup by [`verify_pool_role`]). If the pool
+    /// is ever hardened to connect as a role that does not bypass RLS, an
+    /// INSERT and SELECT policy for the audit chain writer must be added
+    /// first. The same holds for every caller of
+    /// [`write_tenant_audit_event_in_tx`]: [`Db::update_tenant`] and
+    /// [`Db::soft_delete_tenant`] run it inside `Db::begin_audited` for
+    /// this reason.
     pub async fn write_tenant_audit_event(
         &self,
         actor_class: &'static str,
@@ -105,73 +120,12 @@ impl Db {
         tenant_id: Uuid,
         payload: serde_json::Value,
     ) -> Result<AuditEvent> {
-        for attempt in 0..MAX_SERIALIZATION_RETRIES {
-            match self
-                .try_write_tenant_audit_event(actor_class, actor_id, tenant_id, &payload)
-                .await
-            {
-                Ok(ev) => return Ok(ev),
-                Err(Error::Sqlx(sqlx::Error::Database(e)))
-                    if e.code().as_deref() == Some(SQLSTATE_SERIALIZATION_FAILURE)
-                        && attempt + 1 < MAX_SERIALIZATION_RETRIES =>
-                {
-                    // No backoff — the conflicting writer commits in
-                    // microseconds and PG will arbitrate on the next
-                    // SELECT. Re-issue immediately. Audit chain contention
-                    // is operationally significant (it implies concurrent
-                    // mutations on the same tenant), so the retry is
-                    // logged for the operator to correlate with traffic
-                    // bursts or hot-spot tenants.
-                    tracing::warn!(
-                        %tenant_id,
-                        attempt = attempt + 1,
-                        max_attempts = MAX_SERIALIZATION_RETRIES,
-                        "serialization_failure on audit chain write; retrying"
-                    );
-                    continue;
-                }
-                Err(e) => return Err(e),
-            }
-        }
-        unreachable!("retry loop must return inside the loop");
-    }
-
-    /// # Pool-role invariant (applies to this helper too)
-    ///
-    /// This method begins its transaction via `self.pool.begin()` — the
-    /// pool's session role directly, **not** `begin_tenant`. Two reasons:
-    ///
-    /// 1. The `prev_hash` SELECT must see all rows in the chain regardless
-    ///    of the `app.current_tenant` GUC (which `begin_tenant` would set
-    ///    via the `app_api` role + the RLS USING clause).
-    /// 2. There is no INSERT policy on `audit_events` for `app_api`
-    ///    today — an INSERT under that role would be denied.
-    ///
-    /// The audit writer therefore **requires** the pool's session role to
-    /// be RLS-bypassing (the default for the connecting role in our
-    /// development and current production paths). If the pool is ever
-    /// hardened to connect as a non-RLS-bypassing role, an INSERT + SELECT
-    /// policy for the audit chain writer must be added first — otherwise
-    /// the `prev_hash` lookup will silently return `None` and every row
-    /// will begin a new "first" entry, breaking chain integrity without
-    /// any error surface. The same invariant holds for any caller of
-    /// [`write_tenant_audit_event_in_tx`] — they must open their tx on a
-    /// pool whose role bypasses RLS.
-    async fn try_write_tenant_audit_event(
-        &self,
-        actor_class: &'static str,
-        actor_id: Option<Uuid>,
-        tenant_id: Uuid,
-        payload: &serde_json::Value,
-    ) -> Result<AuditEvent> {
-        let mut tx = self.pool.begin().await?;
-        sqlx::query("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")
-            .execute(&mut *tx)
-            .await?;
-        let ev = write_tenant_audit_event_in_tx(&mut tx, actor_class, actor_id, tenant_id, payload)
-            .await?;
+        let mut tx = self.begin_audited().await?;
+        let event =
+            write_tenant_audit_event_in_tx(&mut tx, actor_class, actor_id, tenant_id, &payload)
+                .await?;
         tx.commit().await?;
-        Ok(ev)
+        Ok(event)
     }
 }
 
@@ -185,18 +139,16 @@ impl Db {
 ///
 /// # Caller responsibilities
 ///
-/// * Open the transaction at `SERIALIZABLE` isolation. Lower isolation
-///   levels race on the `prev_hash` SELECT — two writers on the same
-///   chain can read the same tip, append independently, and produce a
-///   fork. `SERIALIZABLE` makes one writer retry instead.
-/// * Handle retries. On SQLSTATE `40001` (serialization_failure), roll
-///   back and re-run the whole UPDATE-plus-audit unit. The standalone
-///   [`Db::write_tenant_audit_event`] retries internally; the in-tx
-///   helper cannot, because the retry needs to re-execute the caller's
-///   mutation too.
-/// * Open the transaction on a pool role that bypasses RLS on
-///   `audit_events` (see the pool-role invariant on
-///   [`Db::try_write_tenant_audit_event`]).
+/// * Open the transaction at READ COMMITTED, as `Db::begin_audited`
+///   does. Under REPEATABLE READ or SERIALIZABLE, a writer that waited for
+///   the chain head would fail with a serialization error when the holder
+///   commits.
+/// * Call this after locking or changing the domain rows, as the last
+///   statement before commit, so the chain head is locked last and held
+///   only for the append.
+/// * Open the transaction on a pool role that bypasses RLS (see the
+///   pool-role invariant on
+///   [`Db::write_tenant_audit_event`]).
 pub async fn write_tenant_audit_event_in_tx(
     conn: &mut sqlx::PgConnection,
     actor_class: &'static str,
@@ -204,34 +156,23 @@ pub async fn write_tenant_audit_event_in_tx(
     tenant_id: Uuid,
     payload: &serde_json::Value,
 ) -> Result<AuditEvent> {
-    // Read the tip of this tenant's chain. The chain index
-    // (`audit_events_chain_idx` from migration 20260605000000) covers
-    // `(chain_kind, chain_id, occurred_at)`; the ORDER BY uses
-    // `occurred_at DESC, id DESC` so a same-microsecond tie resolves
-    // deterministically (id is the within-partition tiebreaker the
-    // PK includes).
-    let prev_hash: Option<Vec<u8>> = sqlx::query_scalar(
-        "SELECT payload_hash FROM audit_events
-          WHERE chain_kind = 'tenant' AND chain_id = $1
-          ORDER BY occurred_at DESC, id DESC
-          LIMIT 1",
-    )
-    .bind(tenant_id)
-    .fetch_optional(&mut *conn)
-    .await?;
+    // Lock this chain's head, creating it on the chain's first append.
+    // Under READ COMMITTED a writer that waits here resumes with the head
+    // as the previous holder committed it.
+    let head = lock_tenant_chain_head(conn, tenant_id).await?;
+    let prev_hash = head.tip_hash;
 
-    // Generate row identifiers inside the transaction so a serialization
-    // retry uses a fresh timestamp (avoids `(chain_id, occurred_at)`
-    // duplicates if two retries collide on the same microsecond).
-    let occurred_at: OffsetDateTime = sqlx::query_scalar("SELECT now()")
+    // Read after the lock, so a writer that began earlier but waited does
+    // not record a time older than the row it links to.
+    let occurred_at: OffsetDateTime = sqlx::query_scalar!(r#"SELECT clock_timestamp() AS "now!""#)
         .fetch_one(&mut *conn)
         .await?;
-    // UUID v4 (random) here, deliberately not v7. The audit row's
-    // ordering key is `(occurred_at, id)` — the timestamp carries the
-    // ordering, `id` is the within-partition tiebreaker. Leaking a
-    // coarse insert timestamp into the id (as v7 does) would offer no
-    // benefit and would mildly weaken the unguessability property the
-    // verifier-side query relies on for partition-walk correctness.
+
+    // UUID v4 (random) here, deliberately not v7. The row's primary key is
+    // `(occurred_at, id)`: the timestamp already carries the time, and `id`
+    // only breaks ties within a partition. Putting a coarse insert time
+    // into the id as well (as v7 does) would add nothing and would make
+    // ids guessable.
     let row_id = Uuid::new_v4();
 
     // Canonical input. RFC 3339 with UTC offset for occurred_at — a
@@ -266,23 +207,36 @@ pub async fn write_tenant_audit_event_in_tx(
     }
     let payload_hash = hasher.finalize().to_vec();
 
-    sqlx::query(
+    sqlx::query!(
         "INSERT INTO audit_events
             (id, occurred_at, actor_class, actor_id, tenant_id,
              chain_kind, chain_id, prev_hash, payload, payload_hash)
          VALUES
             ($1, $2, $3, $4, $5,
              'tenant', $6, $7, $8, $9)",
+        row_id,
+        occurred_at,
+        actor_class,
+        actor_id,
+        tenant_id,
+        tenant_id,
+        prev_hash.as_deref(),
+        payload,
+        &payload_hash
     )
-    .bind(row_id)
-    .bind(occurred_at)
-    .bind(actor_class)
-    .bind(actor_id)
-    .bind(tenant_id)
-    .bind(tenant_id)
-    .bind(prev_hash.as_deref())
-    .bind(payload)
-    .bind(&payload_hash)
+    .execute(&mut *conn)
+    .await?;
+
+    sqlx::query!(
+        "UPDATE audit_chain_heads
+            SET seq              = seq + 1,
+                tip_hash         = $2,
+                last_occurred_at = $3
+          WHERE chain_kind = 'tenant' AND chain_id = $1",
+        tenant_id,
+        &payload_hash,
+        occurred_at
+    )
     .execute(&mut *conn)
     .await?;
 
@@ -294,27 +248,61 @@ pub async fn write_tenant_audit_event_in_tx(
     })
 }
 
+/// The tip of a chain, read from its locked `audit_chain_heads` row.
+struct ChainHead {
+    /// `None` while the chain has no rows.
+    tip_hash: Option<Vec<u8>>,
+}
+
+/// Lock the tenant chain's head row until the transaction ends, creating
+/// the row first if this is the chain's first append. Two first appends
+/// racing to create it both end up locking the same row: the loser's
+/// `ON CONFLICT DO NOTHING` waits for the winner and then does nothing.
+async fn lock_tenant_chain_head(
+    conn: &mut sqlx::PgConnection,
+    tenant_id: Uuid,
+) -> Result<ChainHead> {
+    loop {
+        let head = sqlx::query_as!(
+            ChainHead,
+            "SELECT tip_hash FROM audit_chain_heads
+              WHERE chain_kind = 'tenant' AND chain_id = $1
+                FOR UPDATE",
+            tenant_id
+        )
+        .fetch_optional(&mut *conn)
+        .await?;
+        if let Some(head) = head {
+            return Ok(head);
+        }
+        sqlx::query!(
+            "INSERT INTO audit_chain_heads (chain_kind, chain_id)
+             VALUES ('tenant', $1)
+             ON CONFLICT (chain_kind, chain_id) DO NOTHING",
+            tenant_id
+        )
+        .execute(&mut *conn)
+        .await?;
+    }
+}
+
 /// Verify that the given connection's session role can drive the audit
 /// chain writer. Designed to be called once at process startup against a
 /// connection acquired from the same pool the writer will use.
 ///
-/// Three capabilities are checked, against `current_user` on `conn`:
+/// Four capabilities are checked, against `current_user` on `conn`:
 ///
 /// 1. **INSERT grant** on `audit_events` — without this the writer's
 ///    INSERT fails immediately with a SQL error. Loud failure at first
 ///    write; checking at startup turns it into refuse-to-start.
-/// 2. **SELECT grant** on `audit_events` — the `prev_hash` lookup is a
-///    SELECT. Same loud-failure shape as INSERT.
-/// 3. **RLS bypass** — `rolbypassrls OR rolsuper` on the row in
-///    `pg_roles` matching `current_user`. **This is the silent-failure
-///    axis.** Without bypass, the chain-tip SELECT returns nothing for
-///    rows the RLS policy excludes (and the `audit_events_tenant_isolation`
-///    policy from `20260605120000_audit_events_rls.sql` excludes
-///    everything when `app.current_tenant` is unset, which it is on the
-///    pool path the writer uses — see the pool-role invariant on
-///    [`Db::try_write_tenant_audit_event`]). Every row becomes a new
-///    "first" entry: `prev_hash` is `NULL`, the hash chain forks at
-///    every insert, and no error surfaces at the call site.
+/// 2. **SELECT grant** on `audit_events`, which the chain verifier and the
+///    tenant audit count read. Same loud-failure shape as INSERT.
+/// 3. **SELECT, INSERT and UPDATE grants** on `audit_chain_heads`, which
+///    every append locks, creates on a chain's first write, and advances.
+/// 4. **RLS bypass** — `rolbypassrls OR rolsuper` on the row in
+///    `pg_roles` matching `current_user`. `audit_chain_heads` has RLS
+///    enabled and forced with no policy, so without bypass every head
+///    lookup finds nothing and the first INSERT of a head is refused.
 ///
 /// PG semantics note: role attributes (BYPASSRLS, SUPERUSER) do not
 /// inherit through `GRANT role TO role` — only the role's own row in
@@ -325,26 +313,36 @@ pub async fn write_tenant_audit_event_in_tx(
 /// specific capabilities were missing, so the operator log line is
 /// actionable.
 pub async fn verify_pool_role(conn: &mut sqlx::PgConnection) -> Result<()> {
-    let (role, can_insert, can_select, bypasses_rls): (String, bool, bool, bool) = sqlx::query_as(
-        "SELECT
-             current_user::text,
-             has_table_privilege(current_user, 'audit_events', 'INSERT'),
-             has_table_privilege(current_user, 'audit_events', 'SELECT'),
+    let row = sqlx::query!(
+        r#"SELECT
+             current_user::text AS "role!",
+             has_table_privilege(current_user, 'audit_events', 'INSERT') AS "can_insert!",
+             has_table_privilege(current_user, 'audit_events', 'SELECT') AS "can_select!",
+             has_table_privilege(current_user, 'audit_chain_heads', 'SELECT, INSERT, UPDATE')
+                 AS "can_write_heads!",
              COALESCE(
                  (SELECT rolbypassrls OR rolsuper FROM pg_roles WHERE rolname = current_user),
                  false
-             )",
+             ) AS "bypasses_rls!""#
     )
     .fetch_one(&mut *conn)
     .await?;
+    let (role, can_insert, can_select, can_write_heads, bypasses_rls) = (
+        row.role,
+        row.can_insert,
+        row.can_select,
+        row.can_write_heads,
+        row.bypasses_rls,
+    );
 
-    if can_insert && can_select && bypasses_rls {
+    if can_insert && can_select && can_write_heads && bypasses_rls {
         return Ok(());
     }
     Err(Error::AuditPoolRoleUnfit {
         role,
         can_insert,
         can_select,
+        can_write_heads,
         bypasses_rls,
     })
 }

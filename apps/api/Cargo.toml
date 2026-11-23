@@ -45,7 +45,6 @@ maud = { workspace = true, features = ["axum"] }
 rust-embed = { workspace = true, optional = true, features = ["debug-embed", "mime-guess"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-sqlx = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "time"] }
 tower = { workspace = true }
 tower-http = { workspace = true, features = ["fs", "request-id", "set-header", "timeout", "trace"] }
@@ -56,6 +55,7 @@ utoipa-axum = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v7"] }
 
 [dev-dependencies]
+sqlx = { workspace = true }
 flight-academy-test-support = { workspace = true }
 futures-util = { workspace = true }
 http-body-util = { workspace = true }

@@ -104,10 +104,11 @@ Breaking changes: append `!` after type/scope and include `BREAKING CHANGE:` in 
 
 Current prerequisites (toolchain pinning via `rust-toolchain.toml` will follow once the toolchain decision settles; a `Justfile` will land alongside an end-to-end dev orchestration command):
 
-- Rust 1.83+ (`cargo`, `rustc`, `rustfmt`, `clippy`)
+- Rust 1.85+ (`cargo`, `rustc`, `rustfmt`, `clippy`); the workspace uses edition 2024
 - Bun 1.3+ — `apps/api/build.rs` invokes Bun + `@tailwindcss/cli` to compile the MASH web surface's stylesheet per [ADR-020](docs/architecture/ADR-020-mash-frontend-architecture.md) §O. Required at build time; not in production runtime.
-- Docker (testcontainers for integration tests; Postgres 18 image)
+- Docker (testcontainers for integration tests; Postgres 18 image). PostgreSQL 18 is the minimum supported server: the application uses 18-only SQL and refuses to start on an older one
 - `gitleaks`, `typos`, `shellcheck`, `actionlint`, `cargo-audit`, `cargo-deny` — `scripts/check-all.sh` will tell you which are missing
+- `sqlx-cli` 0.9 (`cargo install sqlx-cli --version 0.9.0 --locked --no-default-features --features postgres,rustls`), only when you change a database query
 - Flutter latest stable (only when `apps/mobile` lands)
 
 What currently runs locally:
@@ -118,6 +119,18 @@ cargo build --workspace                              # build.rs compiles Tailwin
 cargo test --workspace                               # spins up testcontainers
 scripts/check-all.sh                                 # mirrors the CI quality gate
 ```
+
+### Changing a database query
+
+Every query is a compile-time-checked sqlx macro (`query!`, `query_as!`, `query_scalar!`); the runtime functions are rejected by clippy outside test code. Builds check queries against the committed `.sqlx/` cache (`SQLX_OFFLINE` is set in `.cargo/config.toml`), so no database is needed to build. After adding or changing a query, or a migration that affects one, regenerate the cache against a migrated database and commit it with the change:
+
+```bash
+export DATABASE_URL=postgres://postgres@127.0.0.1:5432/flight_academy_dev
+cargo run --bin flight-academy -- migrate
+cargo sqlx prepare --workspace
+```
+
+CI runs `cargo sqlx prepare --workspace --check` and fails if the cache is missing a query or no longer matches the schema.
 
 Full setup guide will be at [docs/development/setup.md](docs/development/setup.md) when there is enough to write down beyond the above.
 

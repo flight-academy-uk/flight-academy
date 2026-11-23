@@ -9,7 +9,7 @@ publish.workspace = true
 [dependencies]
 flight-academy-auth = { workspace = true }
 flight-academy-core = { workspace = true }
-flight-academy-db = { workspace = true }
+flight-academy-db = { workspace = true, features = ["test-util"] }
 serde_json = { workspace = true }
 sqlx = { workspace = true, features = ["migrate"] }
 testcontainers-modules = { workspace = true, features = ["postgres"] }
