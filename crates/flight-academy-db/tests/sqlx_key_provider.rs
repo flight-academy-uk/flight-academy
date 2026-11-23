@@ -48,13 +48,13 @@ async fn generate_creates_active_version_1() {
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
 
     let version = kp
-        .generate_dek(ControllerId::Tenant(tenant.id), "tenant_brand")
+        .generate_dek(ControllerId::Tenant(tenant.id.as_uuid()), "tenant_brand")
         .await
         .unwrap();
     assert_eq!(version, 1);
 
     let (_, active_version) = kp
-        .active_dek_for(ControllerId::Tenant(tenant.id), "tenant_brand")
+        .active_dek_for(ControllerId::Tenant(tenant.id.as_uuid()), "tenant_brand")
         .await
         .unwrap();
     assert_eq!(active_version, 1);
@@ -65,7 +65,7 @@ async fn generate_twice_without_rotation_fails() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-twice", "ATO Twice", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
     let err = kp
@@ -80,7 +80,7 @@ async fn rotate_creates_new_active_and_retires_old() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-rotate", "ATO Rotate", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
     let v1_dek = kp
@@ -132,7 +132,7 @@ async fn rotate_without_prior_generation_fails() {
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
 
     let err = kp
-        .rotate_dek(ControllerId::Tenant(tenant.id), "tenant_brand")
+        .rotate_dek(ControllerId::Tenant(tenant.id.as_uuid()), "tenant_brand")
         .await
         .expect_err("rotate without active should error");
     assert!(matches!(err, StoreError::NoActiveDek));
@@ -143,7 +143,7 @@ async fn shred_removes_retired_version() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-shred", "ATO Shred", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
     kp.rotate_dek(controller, "tenant_brand").await.unwrap();
@@ -180,7 +180,7 @@ async fn shred_refuses_active_version() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-shred-active", "ATO ShredActive", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
     let err = kp
@@ -199,19 +199,19 @@ async fn cross_tenant_dek_isolation() {
     let tenant_b = seed_tenant(&db, "ato-iso-b", "Iso B", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
 
-    kp.generate_dek(ControllerId::Tenant(tenant_a.id), "tenant_brand")
+    kp.generate_dek(ControllerId::Tenant(tenant_a.id.as_uuid()), "tenant_brand")
         .await
         .unwrap();
-    kp.generate_dek(ControllerId::Tenant(tenant_b.id), "tenant_brand")
+    kp.generate_dek(ControllerId::Tenant(tenant_b.id.as_uuid()), "tenant_brand")
         .await
         .unwrap();
     let dek_a = kp
-        .active_dek_for(ControllerId::Tenant(tenant_a.id), "tenant_brand")
+        .active_dek_for(ControllerId::Tenant(tenant_a.id.as_uuid()), "tenant_brand")
         .await
         .unwrap()
         .0;
     let dek_b = kp
-        .active_dek_for(ControllerId::Tenant(tenant_b.id), "tenant_brand")
+        .active_dek_for(ControllerId::Tenant(tenant_b.id.as_uuid()), "tenant_brand")
         .await
         .unwrap()
         .0;
@@ -239,7 +239,7 @@ async fn tenant_erasure_cascades_to_dek_wrappings() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-erase", "ATO Erase", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     // Seed multiple versions across two record_kinds so the cascade
     // has something to shred.
@@ -340,7 +340,7 @@ async fn active_dek_for_uninitialised_pair_returns_no_active_dek() {
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
 
     let err = kp
-        .active_dek_for(ControllerId::Tenant(tenant.id), "tenant_brand")
+        .active_dek_for(ControllerId::Tenant(tenant.id.as_uuid()), "tenant_brand")
         .await
         .expect_err("fresh (tenant, record_kind) should error");
     assert!(matches!(err, StoreError::NoActiveDek));
@@ -351,7 +351,7 @@ async fn dek_at_unknown_version_returns_no_such_version() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-noversion", "ATO NoVersion", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
 
@@ -371,7 +371,7 @@ async fn shred_unknown_version_returns_no_such_version() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-noshred", "ATO NoShred", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
 
@@ -397,12 +397,12 @@ async fn tenant_b_cannot_observe_tenant_a_active_dek() {
     let tenant_b = seed_tenant(&db, "ato-leak-b", "Leak B", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
 
-    kp.generate_dek(ControllerId::Tenant(tenant_a.id), "tenant_brand")
+    kp.generate_dek(ControllerId::Tenant(tenant_a.id.as_uuid()), "tenant_brand")
         .await
         .unwrap();
 
     let err = kp
-        .active_dek_for(ControllerId::Tenant(tenant_b.id), "tenant_brand")
+        .active_dek_for(ControllerId::Tenant(tenant_b.id.as_uuid()), "tenant_brand")
         .await
         .expect_err("tenant B should not see tenant A's wrapping");
     assert!(matches!(err, StoreError::NoActiveDek));
@@ -418,7 +418,7 @@ async fn cross_record_kind_isolation_at_sql_layer() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-recordkind", "ATO RecordKind", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "default").await.unwrap();
 
@@ -441,7 +441,7 @@ async fn corrupted_wrapped_bytes_in_db_surface_as_decrypt_failure() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "ato-tamper", "ATO Tamper", "ato").await;
     let kp = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp.generate_dek(controller, "tenant_brand").await.unwrap();
 
@@ -513,7 +513,7 @@ async fn concurrent_shred_and_rotate_serialise_via_row_lock() {
     let tenant = seed_tenant(&db, "ato-shredrace", "ATO ShredRace", "ato").await;
     let kp_a = SqlxKeyProvider::new(db.pool().clone(), master());
     let kp_b = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     kp_a.generate_dek(controller, "tenant_brand").await.unwrap();
     kp_a.rotate_dek(controller, "tenant_brand").await.unwrap();
@@ -563,7 +563,7 @@ async fn concurrent_generate_race_loses_to_partial_unique_index() {
     let tenant = seed_tenant(&db, "ato-race", "ATO Race", "ato").await;
     let kp_a = SqlxKeyProvider::new(db.pool().clone(), master());
     let kp_b = SqlxKeyProvider::new(db.pool().clone(), master());
-    let controller = ControllerId::Tenant(tenant.id);
+    let controller = ControllerId::Tenant(tenant.id.as_uuid());
 
     let (a, b) = tokio::join!(
         kp_a.generate_dek(controller, "tenant_brand"),

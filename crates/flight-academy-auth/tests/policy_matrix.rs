@@ -7,11 +7,11 @@ use flight_academy_auth::{
     Action, ActorClass, Decision, Policy, Resource, ResourceAttributes, ResourceKind, Role,
     Subject, SubjectAttributes, TenantAdministration, TenantOwnership,
 };
-use uuid::Uuid;
+use flight_academy_core::{TenantId, UserId};
 
-fn subject(actor_class: ActorClass, tenant_id: Option<Uuid>) -> Subject {
+fn subject(actor_class: ActorClass, tenant_id: Option<TenantId>) -> Subject {
     Subject {
-        user_id: Uuid::new_v4(),
+        user_id: UserId::new(),
         actor_class,
         tenant_id,
         roles: BTreeSet::new(),
@@ -20,13 +20,13 @@ fn subject(actor_class: ActorClass, tenant_id: Option<Uuid>) -> Subject {
     }
 }
 
-fn admin_subject(tenant_id: Uuid) -> Subject {
+fn admin_subject(tenant_id: TenantId) -> Subject {
     let mut s = subject(ActorClass::Member, Some(tenant_id));
     s.roles.insert(Role::TenantAdmin);
     s
 }
 
-fn resource(tenant_id: Uuid) -> Resource {
+fn resource(tenant_id: TenantId) -> Resource {
     Resource {
         tenant_id,
         kind: ResourceKind::AuditEvent,
@@ -37,7 +37,7 @@ fn resource(tenant_id: Uuid) -> Resource {
 
 #[test]
 fn tenant_ownership_permits_matching_tenant() {
-    let t = Uuid::new_v4();
+    let t = TenantId::new();
     let decision = TenantOwnership.permit(
         &subject(ActorClass::Member, Some(t)),
         Action::ListAuditEvents,
@@ -49,9 +49,9 @@ fn tenant_ownership_permits_matching_tenant() {
 #[test]
 fn tenant_ownership_denies_mismatched_tenant() {
     let decision = TenantOwnership.permit(
-        &subject(ActorClass::Member, Some(Uuid::new_v4())),
+        &subject(ActorClass::Member, Some(TenantId::new())),
         Action::ListAuditEvents,
-        &resource(Uuid::new_v4()),
+        &resource(TenantId::new()),
     );
     assert!(matches!(decision, Decision::Deny { .. }));
 }
@@ -61,14 +61,14 @@ fn tenant_ownership_denies_subject_without_tenant() {
     let decision = TenantOwnership.permit(
         &subject(ActorClass::Staff, None),
         Action::ListAuditEvents,
-        &resource(Uuid::new_v4()),
+        &resource(TenantId::new()),
     );
     assert!(matches!(decision, Decision::Deny { .. }));
 }
 
 #[test]
 fn tenant_administration_permits_admin_of_matching_tenant() {
-    let t = Uuid::new_v4();
+    let t = TenantId::new();
     let decision =
         TenantAdministration.permit(&admin_subject(t), Action::UpdateTenant, &resource(t));
     assert_eq!(decision, Decision::Permit);
@@ -78,7 +78,7 @@ fn tenant_administration_permits_admin_of_matching_tenant() {
 fn tenant_administration_denies_non_admin_member() {
     // Member of the right tenant, but no tenant-admin role: ownership
     // passes, role check fails.
-    let t = Uuid::new_v4();
+    let t = TenantId::new();
     let decision = TenantAdministration.permit(
         &subject(ActorClass::Member, Some(t)),
         Action::UpdateTenant,
@@ -94,8 +94,8 @@ fn tenant_administration_denies_non_admin_member() {
 fn tenant_administration_denies_admin_of_other_tenant() {
     // The role doesn't unlock cross-tenant administration — ownership
     // fires first, denies on tenant mismatch.
-    let admin_t = Uuid::new_v4();
-    let target_t = Uuid::new_v4();
+    let admin_t = TenantId::new();
+    let target_t = TenantId::new();
     let decision = TenantAdministration.permit(
         &admin_subject(admin_t),
         Action::DeleteTenant,
@@ -112,7 +112,7 @@ fn tenant_administration_denies_subject_without_tenant() {
     let decision = TenantAdministration.permit(
         &subject(ActorClass::Member, None),
         Action::UpdateTenant,
-        &resource(Uuid::new_v4()),
+        &resource(TenantId::new()),
     );
     assert!(matches!(decision, Decision::Deny { .. }));
 }

@@ -6,6 +6,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
+use flight_academy_core::TenantId;
 use flight_academy_test_support::{fresh_db, member_subject, seed_tenant, tenant_admin_subject};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
@@ -58,7 +59,7 @@ async fn problem_details_carry_the_response_request_id() {
         .header("x-request-id", "client-chosen-id")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(Uuid::new_v4()));
+    req.extensions_mut().insert(member_subject(TenantId::new()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);

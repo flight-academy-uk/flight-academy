@@ -79,7 +79,7 @@
         }
       },
       "delete": {
-        "summary": "DELETE a tenant by slug — soft-delete (`deleted_at` + `deletion_reason`).\nTenant-admin only (TenantAdministration). The UPDATE and the audit\nrow commit or fail together for the same regulator-facing reason as\nPATCH.",
+        "summary": "DELETE a tenant by slug — soft-delete (`deleted_at` + `deletion_reason`).\nTenant-admin only (TenantAdministration). The deletion and its audit\nrow commit together; see `Db::soft_delete_tenant`.",
         "operationId": "tenant_delete",
         "parameters": [
           {
@@ -159,7 +159,7 @@
         }
       },
       "patch": {
-        "summary": "PATCH a tenant by slug. Tenant-admin only (TenantAdministration). The\nUPDATE and the audit-event INSERT run in the same SERIALIZABLE\ntransaction so they commit or fail together — see ADR-009 §A on the\nregulator-facing guarantee that every state change has a paired audit\nrow.",
+        "summary": "PATCH a tenant by slug. Tenant-admin only (TenantAdministration). The\nupdate and its audit row commit together; see `Db::update_tenant`.",
         "operationId": "tenant_patch",
         "parameters": [
           {
@@ -412,6 +412,10 @@
           }
         }
       },
+      "TenantId": {
+        "type": "string",
+        "pattern": "^ten_[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+      },
       "TenantPatchRequest": {
         "type": "object",
         "description": "Partial-update body for `PATCH /api/v1/tenants/{tenant}`. Either field\nis optional; omitted fields are left untouched. `slug` and\n`tenant_type` are intentionally not editable — both are identity-shaped\n(URL stability, regulatory operator class) and changes deserve their\nown endpoints with separate semantics.",
@@ -437,8 +441,7 @@
         ],
         "properties": {
           "id": {
-            "type": "string",
-            "format": "uuid"
+            "$ref": "#/components/schemas/TenantId"
           },
           "name": {
             "type": "string"

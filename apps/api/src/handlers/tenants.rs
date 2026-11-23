@@ -13,10 +13,10 @@ use flight_academy_auth::{
     TenantAdministration, TenantOwnership,
 };
 use flight_academy_core::Error;
+use flight_academy_core::TenantId;
 use flight_academy_db::{Db, Tenant};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::error::{ApiError, ProblemDetails};
 
@@ -25,7 +25,7 @@ use crate::error::{ApiError, ProblemDetails};
 /// metadata, etc.) are not in the wire shape per ADR-008 §B.
 #[derive(Serialize, ToSchema)]
 pub struct TenantResponse {
-    pub id: Uuid,
+    pub id: TenantId,
     pub slug: String,
     pub name: String,
     pub tenant_type: String,

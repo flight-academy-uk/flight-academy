@@ -6,3 +6,18 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 
+
+[features]
+# Trait impls for the ID newtypes, kept optional so the crate stays free of
+# database and HTTP frameworks unless a consumer asks for them.
+sqlx = ["dep:sqlx"]
+openapi = ["dep:utoipa"]
+
+[dependencies]
+serde = { workspace = true }
+sqlx = { workspace = true, optional = true }
+utoipa = { workspace = true, optional = true }
+uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+serde_json = { workspace = true }

@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use uuid::Uuid;
+use flight_academy_core::{TenantId, UserId};
 
 /// Three actor classes per ADR-010 §B. `Member` is the default — pilots,
 /// students, instructors, ATO staff acting on tenant resources. `Staff` is
@@ -58,11 +58,11 @@ pub struct Elevation;
 
 #[derive(Clone, Debug)]
 pub struct Subject {
-    pub user_id: Uuid,
+    pub user_id: UserId,
     pub actor_class: ActorClass,
     /// `None` for `Staff` until elevated (ADR-010 §B); always `Some` for
     /// `Member` calling the product API.
-    pub tenant_id: Option<Uuid>,
+    pub tenant_id: Option<TenantId>,
     pub roles: BTreeSet<Role>,
     pub attributes: SubjectAttributes,
     pub elevation: Option<Elevation>,

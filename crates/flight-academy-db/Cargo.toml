@@ -8,7 +8,7 @@ publish.workspace = true
 
 [dependencies]
 derive_more = { workspace = true, features = ["from"] }
-flight-academy-core = { workspace = true }
+flight-academy-core = { workspace = true, features = ["sqlx"] }
 flight-academy-store = { workspace = true }
 rand_core = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }

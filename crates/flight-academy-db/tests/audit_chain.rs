@@ -2,15 +2,15 @@
 //! that a tampered row is detected by re-deriving its hash.
 #![allow(clippy::disallowed_methods)] // Test code: runtime SQL for per-test databases, seeding and catalogue checks.
 
+use flight_academy_core::UserId;
 use flight_academy_test_support::{fresh_db, seed_tenant};
 use sqlx::Row;
-use uuid::Uuid;
 
 #[tokio::test]
 async fn chain_links_across_three_writes() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "chain-test", "Chain Test", "ato").await;
-    let actor = Uuid::new_v4();
+    let actor = UserId::new();
 
     let a = db
         .write_tenant_audit_event(
@@ -59,7 +59,7 @@ async fn chain_links_across_three_writes() {
 async fn rederiving_payload_hash_matches_stored_value() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "derive-test", "Derive Test", "part_145").await;
-    let actor = Uuid::new_v4();
+    let actor = UserId::new();
 
     let payload = serde_json::json!({"action": "test", "n": 42});
     let written = db
@@ -72,10 +72,10 @@ async fn rederiving_payload_hash_matches_stored_value() {
     let derived = flight_academy_db::audit::payload_hash(
         written.occurred_at,
         "member",
-        Some(actor),
-        Some(tenant.id),
+        Some(actor.as_uuid()),
+        Some(tenant.id.as_uuid()),
         "tenant",
-        Some(tenant.id),
+        Some(tenant.id.as_uuid()),
         &payload,
         written.prev_hash.as_deref(),
     );
@@ -89,7 +89,7 @@ async fn rederiving_payload_hash_matches_stored_value() {
 async fn tampered_payload_fails_rederivation() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "tamper-test", "Tamper Test", "airfield_operator").await;
-    let actor = Uuid::new_v4();
+    let actor = UserId::new();
 
     let original = serde_json::json!({"action": "create", "id": 1});
     let written = db
@@ -104,10 +104,10 @@ async fn tampered_payload_fails_rederivation() {
     let derived_with_tampered = flight_academy_db::audit::payload_hash(
         written.occurred_at,
         "member",
-        Some(actor),
-        Some(tenant.id),
+        Some(actor.as_uuid()),
+        Some(tenant.id.as_uuid()),
         "tenant",
-        Some(tenant.id),
+        Some(tenant.id.as_uuid()),
         &tampered,
         written.prev_hash.as_deref(),
     );
@@ -122,7 +122,7 @@ async fn isolated_chains_dont_cross_link() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-chain", "Alpha", "ato").await;
     let bravo = seed_tenant(&db, "bravo-chain", "Bravo", "ato").await;
-    let actor = Uuid::new_v4();
+    let actor = UserId::new();
 
     // Interleave writes: alpha, bravo, alpha, bravo.
     let a1 = db
@@ -157,7 +157,7 @@ async fn writer_inserts_row_visible_via_select() {
     // through the same session role as the writer — no RLS interference.
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "select-test", "Select Test", "ato").await;
-    let actor = Uuid::new_v4();
+    let actor = UserId::new();
 
     let written = db
         .write_tenant_audit_event(
@@ -191,7 +191,7 @@ async fn invalid_actor_class_is_rejected_by_check_constraint() {
     let err = db
         .write_tenant_audit_event(
             "admin",
-            Some(Uuid::new_v4()),
+            Some(UserId::new()),
             tenant.id,
             serde_json::json!({}),
         )
@@ -279,7 +279,7 @@ async fn concurrent_writes_on_one_chain_succeed_and_stay_linear() {
             tokio::spawn(async move {
                 db.write_tenant_audit_event(
                     "member",
-                    Some(Uuid::new_v4()),
+                    Some(UserId::new()),
                     tenant_id,
                     serde_json::json!({ "writer": i }),
                 )

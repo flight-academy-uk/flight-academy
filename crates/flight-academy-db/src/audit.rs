@@ -43,6 +43,7 @@
 //! last, which keeps the lock order fixed and the head held only for the
 //! append itself.
 
+use flight_academy_core::{TenantId, UserId};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
@@ -116,8 +117,8 @@ impl Db {
     pub async fn write_tenant_audit_event(
         &self,
         actor_class: &'static str,
-        actor_id: Option<Uuid>,
-        tenant_id: Uuid,
+        actor_id: Option<UserId>,
+        tenant_id: TenantId,
         payload: serde_json::Value,
     ) -> Result<AuditEvent> {
         let mut tx = self.begin_audited().await?;
@@ -152,10 +153,15 @@ impl Db {
 pub async fn write_tenant_audit_event_in_tx(
     conn: &mut sqlx::PgConnection,
     actor_class: &'static str,
-    actor_id: Option<Uuid>,
-    tenant_id: Uuid,
+    actor_id: Option<UserId>,
+    tenant_id: TenantId,
     payload: &serde_json::Value,
 ) -> Result<AuditEvent> {
+    // Audit rows and their hash input hold bare UUIDs: the canonical row is
+    // part of the chain format and must not change with the wire form.
+    let actor_id = actor_id.map(|id| id.as_uuid());
+    let tenant_id = tenant_id.as_uuid();
+
     // Lock this chain's head, creating it on the chain's first append.
     // Under READ COMMITTED a writer that waits here resumes with the head
     // as the previous holder committed it.

@@ -14,12 +14,12 @@ use axum::{
     body::Body,
     http::{Request, StatusCode, header},
 };
+use flight_academy_core::TenantId;
 use flight_academy_test_support::{
     fresh_db, member_subject, seed_tenant, seed_tenant_audit_events, tenant_admin_subject,
 };
 use http_body_util::BodyExt;
 use tower::ServiceExt;
-use uuid::Uuid;
 
 #[tokio::test]
 async fn audit_count_tenant_match_serves_count() {
@@ -78,7 +78,7 @@ async fn audit_count_unknown_slug_is_not_found() {
         .uri("/api/v1/tenants/no-such-tenant/audit-events/count")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(Uuid::new_v4()));
+    req.extensions_mut().insert(member_subject(TenantId::new()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -105,7 +105,11 @@ async fn tenant_get_owner_sees_profile() {
     assert_eq!(body["name"], "Alpha Academy");
     assert_eq!(body["tenant_type"], "ato");
     assert_eq!(body["settings"], serde_json::json!({}));
-    assert_eq!(body["id"], alpha.id.to_string());
+    // The wire form is the prefixed public ID (ADR-006 §D), not the UUID.
+    let id = body["id"].as_str().expect("id is a string");
+    assert!(id.starts_with("ten_") && id.len() == 30, "{id}");
+    assert_eq!(id.parse::<TenantId>().unwrap(), alpha.id);
+    assert!(!id.contains(&alpha.id.as_uuid().to_string()));
 }
 
 #[tokio::test]
@@ -135,7 +139,7 @@ async fn tenant_get_unknown_slug_is_not_found() {
         .uri("/api/v1/tenants/nope")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(Uuid::new_v4()));
+    req.extensions_mut().insert(member_subject(TenantId::new()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);

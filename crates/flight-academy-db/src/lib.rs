@@ -26,9 +26,9 @@ compile_error!("the `test-util` feature exposes Db::pool(); never enable it in a
 use std::str::FromStr;
 use std::time::Duration;
 
+use flight_academy_core::TenantId;
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 use sqlx::{PgConnection, PgPool, Postgres, Transaction};
-use uuid::Uuid;
 
 pub(crate) type Tx = Transaction<'static, Postgres>;
 
@@ -156,12 +156,12 @@ impl Db {
     /// commit or rollback and cannot leak to the next user of the pooled
     /// connection. The role is what makes RLS apply; the setting is what the
     /// `audit_events_tenant_isolation` policy reads.
-    pub async fn begin_tenant(&self, tenant_id: Uuid) -> Result<TenantTx> {
+    pub async fn begin_tenant(&self, tenant_id: TenantId) -> Result<TenantTx> {
         let mut tx = self.pool.begin().await?;
         sqlx::query!(
             "SELECT set_config('role', 'app_api', true) AS role,
                     set_config('app.current_tenant', $1, true) AS tenant",
-            tenant_id.to_string()
+            tenant_id.as_uuid().to_string()
         )
         .fetch_one(&mut *tx)
         .await?;

@@ -24,9 +24,9 @@ use std::time::Duration;
 use clap::builder::BoolishValueParser;
 use clap::{Args, Parser, Subcommand};
 use flight_academy_auth::{ActorClass, Role, Subject, SubjectAttributes};
+use flight_academy_core::{TenantId, UserId};
 use flight_academy_db::PoolSettings;
 use tracing_subscriber::EnvFilter;
-use uuid::Uuid;
 
 #[derive(Parser)]
 #[command(name = "flight-academy", about = "Flight Academy API", version)]
@@ -102,11 +102,13 @@ struct DevAuthArgs {
     )]
     enabled: bool,
 
+    /// The development user, as a public ID (`usr_...`).
     #[arg(long = "dev-user-id", env = "FA_DEV_USER_ID")]
-    user_id: Option<Uuid>,
+    user_id: Option<UserId>,
 
+    /// The development user's tenant, as a public ID (`ten_...`).
     #[arg(long = "dev-tenant-id", env = "FA_DEV_TENANT_ID")]
-    tenant_id: Option<Uuid>,
+    tenant_id: Option<TenantId>,
 
     /// Comma-separated roles, e.g. `tenant-admin`. Unknown names are ignored.
     #[arg(long = "dev-roles", env = "FA_DEV_ROLES", default_value = "")]
@@ -283,7 +285,12 @@ fn init_tracing() {
 mod tests {
     use super::*;
 
-    fn dev(enabled: bool, user: Option<Uuid>, tenant: Option<Uuid>, roles: &str) -> DevAuthArgs {
+    fn dev(
+        enabled: bool,
+        user: Option<UserId>,
+        tenant: Option<TenantId>,
+        roles: &str,
+    ) -> DevAuthArgs {
         DevAuthArgs {
             enabled,
             user_id: user,
@@ -299,7 +306,7 @@ mod tests {
 
     #[test]
     fn dev_auth_on_without_ids_refuses_to_start() {
-        let err = dev(true, Some(Uuid::nil()), None, "")
+        let err = dev(true, Some(UserId::new()), None, "")
             .subject()
             .unwrap_err();
         assert!(matches!(err, Error::Config { .. }));
@@ -307,7 +314,7 @@ mod tests {
 
     #[test]
     fn dev_auth_on_builds_subject_once_and_ignores_unknown_roles() {
-        let (user, tenant) = (Uuid::new_v4(), Uuid::new_v4());
+        let (user, tenant) = (UserId::new(), TenantId::new());
         let subject = dev(true, Some(user), Some(tenant), "tenant-admin, no-such-role")
             .subject()
             .unwrap()

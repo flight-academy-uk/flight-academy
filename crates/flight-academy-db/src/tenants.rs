@@ -5,15 +5,15 @@
 //! Soft-deleted tenants (`deleted_at IS NOT NULL`) are invisible to lookups;
 //! their slug is released for reuse per ADR-007 §E.
 
+use flight_academy_core::{TenantId, UserId};
 use sqlx::{FromRow, PgConnection};
-use uuid::Uuid;
 
 use crate::{Db, Result, audit};
 
 /// A live tenant row: the public read shape.
 #[derive(Clone, Debug, FromRow)]
 pub struct Tenant {
-    pub id: Uuid,
+    pub id: TenantId,
     pub slug: String,
     pub name: String,
     pub tenant_type: String,
@@ -27,10 +27,10 @@ impl Db {
     pub async fn tenant_by_slug(&self, slug: &str) -> Result<Option<Tenant>> {
         let tenant = sqlx::query_as!(
             Tenant,
-            "SELECT id, slug, name, tenant_type, settings
+            r#"SELECT id AS "id: TenantId", slug, name, tenant_type, settings
                FROM tenants
               WHERE slug = $1
-                AND deleted_at IS NULL",
+                AND deleted_at IS NULL"#,
             slug
         )
         .fetch_optional(&self.pool)
@@ -44,10 +44,10 @@ impl Db {
     /// because it was soft-deleted after the caller read it.
     pub async fn update_tenant(
         &self,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
         name: Option<&str>,
         settings: Option<&serde_json::Value>,
-        actor_id: Uuid,
+        actor_id: UserId,
     ) -> Result<Option<Tenant>> {
         let mut tx = self.begin_audited().await?;
         let updated = update_tenant_unit(&mut tx, tenant_id, name, settings, actor_id).await?;
@@ -60,9 +60,9 @@ impl Db {
     /// already deleted: the first deletion recorded the event.
     pub async fn soft_delete_tenant(
         &self,
-        tenant_id: Uuid,
+        tenant_id: TenantId,
         reason: &str,
-        actor_id: Uuid,
+        actor_id: UserId,
     ) -> Result<bool> {
         let mut tx = self.begin_audited().await?;
         let deleted = soft_delete_tenant_unit(&mut tx, tenant_id, reason, actor_id).await?;
@@ -72,7 +72,7 @@ impl Db {
 
     /// Number of audit events visible in this tenant's context. Runs under
     /// RLS (`begin_tenant`), so rows of other tenants are not counted.
-    pub async fn tenant_audit_event_count(&self, tenant_id: Uuid) -> Result<i64> {
+    pub async fn tenant_audit_event_count(&self, tenant_id: TenantId) -> Result<i64> {
         let mut tx = self.begin_tenant(tenant_id).await?;
         let count = sqlx::query_scalar!(r#"SELECT COUNT(*) AS "count!" FROM audit_events"#)
             .fetch_one(tx.conn())
@@ -89,10 +89,10 @@ impl Db {
 /// the tenant.
 async fn update_tenant_unit(
     conn: &mut PgConnection,
-    tenant_id: Uuid,
+    tenant_id: TenantId,
     name: Option<&str>,
     settings: Option<&serde_json::Value>,
-    actor_id: Uuid,
+    actor_id: UserId,
 ) -> Result<Option<Tenant>> {
     let row = sqlx::query!(
         "UPDATE tenants
@@ -105,7 +105,7 @@ async fn update_tenant_unit(
                   new.id, new.slug, new.name, new.tenant_type, new.settings",
         name,
         settings,
-        tenant_id
+        tenant_id.as_uuid()
     )
     .fetch_optional(&mut *conn)
     .await?;
@@ -114,7 +114,7 @@ async fn update_tenant_unit(
         return Ok(None);
     };
     let updated = Tenant {
-        id: row.id,
+        id: TenantId::from_uuid(row.id),
         slug: row.slug,
         name: row.name,
         tenant_type: row.tenant_type,
@@ -131,9 +131,9 @@ async fn update_tenant_unit(
 
 async fn soft_delete_tenant_unit(
     conn: &mut PgConnection,
-    tenant_id: Uuid,
+    tenant_id: TenantId,
     reason: &str,
-    actor_id: Uuid,
+    actor_id: UserId,
 ) -> Result<bool> {
     let affected = sqlx::query_scalar!(
         "UPDATE tenants
@@ -143,7 +143,7 @@ async fn soft_delete_tenant_unit(
             AND deleted_at IS NULL
         RETURNING id",
         reason,
-        tenant_id
+        tenant_id.as_uuid()
     )
     .fetch_optional(&mut *conn)
     .await?;
