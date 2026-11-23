@@ -23,8 +23,8 @@ async fn count_for(db: &Db, tenant: TenantId) -> i64 {
 #[tokio::test]
 async fn rls_isolates_tenants_and_excludes_user_chain() {
     let db = fresh_db().await;
-    let tenant_a = TenantId::new();
-    let tenant_b = TenantId::new();
+    let tenant_a = TenantId::random();
+    let tenant_b = TenantId::random();
 
     seed_tenant_audit_events(&db, tenant_a, 3).await;
     seed_tenant_audit_events(&db, tenant_b, 2).await;
@@ -52,7 +52,7 @@ async fn rls_isolates_tenants_and_excludes_user_chain() {
         "tenant B sees its 2 rows"
     );
     assert_eq!(
-        count_for(&db, TenantId::new()).await,
+        count_for(&db, TenantId::random()).await,
         0,
         "random tenant sees nothing"
     );

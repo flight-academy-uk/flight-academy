@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn dev_auth_on_without_ids_refuses_to_start() {
-        let err = dev(true, Some(UserId::new()), None, "")
+        let err = dev(true, Some(UserId::random()), None, "")
             .subject()
             .unwrap_err();
         assert!(matches!(err, Error::Config { .. }));
@@ -314,7 +314,7 @@ mod tests {
 
     #[test]
     fn dev_auth_on_builds_subject_once_and_ignores_unknown_roles() {
-        let (user, tenant) = (UserId::new(), TenantId::new());
+        let (user, tenant) = (UserId::random(), TenantId::random());
         let subject = dev(true, Some(user), Some(tenant), "tenant-admin, no-such-role")
             .subject()
             .unwrap()

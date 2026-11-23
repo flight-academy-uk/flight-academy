@@ -111,7 +111,7 @@ pub async fn fresh_db() -> Db {
 /// the CHECK constraint will reject invalid values, surfacing as a panic
 /// here which is intentional for tests.
 pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> Tenant {
-    let id = TenantId::new();
+    let id = TenantId::random();
     sqlx::query(
         "INSERT INTO tenants (id, slug, name, tenant_type)
          VALUES ($1, $2, $3, $4)",
@@ -136,7 +136,7 @@ pub async fn seed_tenant(db: &Db, slug: &str, name: &str, tenant_type: &str) -> 
 /// PRs that populate them.
 pub fn member_subject(tenant_id: TenantId) -> Subject {
     Subject {
-        user_id: UserId::new(),
+        user_id: UserId::random(),
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles: BTreeSet::new(),
@@ -153,7 +153,7 @@ pub fn tenant_admin_subject(tenant_id: TenantId) -> Subject {
     let mut roles = BTreeSet::new();
     roles.insert(Role::TenantAdmin);
     Subject {
-        user_id: UserId::new(),
+        user_id: UserId::random(),
         actor_class: ActorClass::Member,
         tenant_id: Some(tenant_id),
         roles,

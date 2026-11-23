@@ -82,28 +82,19 @@ macro_rules! prefixed_id {
             pub const PREFIX: &'static str = $prefix;
 
             /// A new random (v4) ID.
-            pub fn new() -> Self {
+            pub fn random() -> Self {
                 Self { uuid: Uuid::new_v4() }
             }
 
+            /// Wrap a stored UUID. Deliberately the only conversion: there
+            /// is no `From<Uuid>`, so an untyped UUID cannot become an ID of
+            /// any kind through `.into()`.
             pub const fn from_uuid(uuid: Uuid) -> Self {
                 Self { uuid }
             }
 
             pub const fn as_uuid(&self) -> Uuid {
                 self.uuid
-            }
-        }
-
-        impl Default for $name {
-            fn default() -> Self {
-                Self::new()
-            }
-        }
-
-        impl From<Uuid> for $name {
-            fn from(uuid: Uuid) -> Self {
-                Self { uuid }
             }
         }
 
@@ -237,15 +228,15 @@ mod tests {
     #[test]
     fn round_trips_random_ids() {
         for _ in 0..1000 {
-            let id = TenantId::new();
+            let id = TenantId::random();
             assert_eq!(id.to_string().len(), 4 + ENCODED_LEN);
             assert_eq!(id.to_string().parse::<TenantId>().unwrap(), id);
         }
     }
 
     #[test]
-    fn new_ids_are_v4() {
-        assert_eq!(TenantId::new().as_uuid().get_version_num(), 4);
+    fn random_ids_are_v4() {
+        assert_eq!(TenantId::random().as_uuid().get_version_num(), 4);
     }
 
     #[test]

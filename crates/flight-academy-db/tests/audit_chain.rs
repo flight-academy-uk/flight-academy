@@ -10,7 +10,7 @@ use sqlx::Row;
 async fn chain_links_across_three_writes() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "chain-test", "Chain Test", "ato").await;
-    let actor = UserId::new();
+    let actor = UserId::random();
 
     let a = db
         .write_tenant_audit_event(
@@ -59,7 +59,7 @@ async fn chain_links_across_three_writes() {
 async fn rederiving_payload_hash_matches_stored_value() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "derive-test", "Derive Test", "part_145").await;
-    let actor = UserId::new();
+    let actor = UserId::random();
 
     let payload = serde_json::json!({"action": "test", "n": 42});
     let written = db
@@ -89,7 +89,7 @@ async fn rederiving_payload_hash_matches_stored_value() {
 async fn tampered_payload_fails_rederivation() {
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "tamper-test", "Tamper Test", "airfield_operator").await;
-    let actor = UserId::new();
+    let actor = UserId::random();
 
     let original = serde_json::json!({"action": "create", "id": 1});
     let written = db
@@ -122,7 +122,7 @@ async fn isolated_chains_dont_cross_link() {
     let db = fresh_db().await;
     let alpha = seed_tenant(&db, "alpha-chain", "Alpha", "ato").await;
     let bravo = seed_tenant(&db, "bravo-chain", "Bravo", "ato").await;
-    let actor = UserId::new();
+    let actor = UserId::random();
 
     // Interleave writes: alpha, bravo, alpha, bravo.
     let a1 = db
@@ -157,7 +157,7 @@ async fn writer_inserts_row_visible_via_select() {
     // through the same session role as the writer — no RLS interference.
     let db = fresh_db().await;
     let tenant = seed_tenant(&db, "select-test", "Select Test", "ato").await;
-    let actor = UserId::new();
+    let actor = UserId::random();
 
     let written = db
         .write_tenant_audit_event(
@@ -191,7 +191,7 @@ async fn invalid_actor_class_is_rejected_by_check_constraint() {
     let err = db
         .write_tenant_audit_event(
             "admin",
-            Some(UserId::new()),
+            Some(UserId::random()),
             tenant.id,
             serde_json::json!({}),
         )
@@ -279,7 +279,7 @@ async fn concurrent_writes_on_one_chain_succeed_and_stay_linear() {
             tokio::spawn(async move {
                 db.write_tenant_audit_event(
                     "member",
-                    Some(UserId::new()),
+                    Some(UserId::random()),
                     tenant_id,
                     serde_json::json!({ "writer": i }),
                 )

@@ -59,7 +59,8 @@ async fn problem_details_carry_the_response_request_id() {
         .header("x-request-id", "client-chosen-id")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(TenantId::new()));
+    req.extensions_mut()
+        .insert(member_subject(TenantId::random()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);

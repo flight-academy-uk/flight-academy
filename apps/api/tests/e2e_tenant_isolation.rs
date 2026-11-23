@@ -78,7 +78,8 @@ async fn audit_count_unknown_slug_is_not_found() {
         .uri("/api/v1/tenants/no-such-tenant/audit-events/count")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(TenantId::new()));
+    req.extensions_mut()
+        .insert(member_subject(TenantId::random()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
@@ -139,7 +140,8 @@ async fn tenant_get_unknown_slug_is_not_found() {
         .uri("/api/v1/tenants/nope")
         .body(Body::empty())
         .unwrap();
-    req.extensions_mut().insert(member_subject(TenantId::new()));
+    req.extensions_mut()
+        .insert(member_subject(TenantId::random()));
 
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
